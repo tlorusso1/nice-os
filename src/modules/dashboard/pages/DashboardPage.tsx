@@ -107,6 +107,21 @@ function CanalCard({
 export default function DashboardPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [syncing, setSyncing] = useState(false);
+
+  const sincronizar = async () => {
+    setSyncing(true);
+    try {
+      await supabase.functions.invoke("sync-vendas", { body: { mode: "month" } });
+      await qc.invalidateQueries();
+      toast.success("Vendas sincronizadas");
+    } catch {
+      toast.error("Falha ao sincronizar vendas");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const mesAtual    = mesPt(0);
   const mesAnterior = mesPt(-1);
