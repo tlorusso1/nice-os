@@ -32,3 +32,6 @@ verify_jwt = false
 
 [functions.proxy-perfit]
 verify_jwt = false
+
+[functions.sync-vendas]
+verify_jwt = false

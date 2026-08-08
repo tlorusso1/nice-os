@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { toast } from "sonner";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, ArrowRight } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
@@ -107,6 +109,21 @@ function CanalCard({
 export default function DashboardPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
+  const [syncing, setSyncing] = useState(false);
+
+  const sincronizar = async () => {
+    setSyncing(true);
+    try {
+      await supabase.functions.invoke("sync-vendas", { body: { mode: "month" } });
+      await qc.invalidateQueries();
+      toast.success("Vendas sincronizadas");
+    } catch {
+      toast.error("Falha ao sincronizar vendas");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
 
   const mesAtual    = mesPt(0);
   const mesAnterior = mesPt(-1);
@@ -184,10 +201,17 @@ export default function DashboardPage() {
           <h1 className="text-lg font-semibold">Visão Geral</h1>
           <p className="text-xs text-muted-foreground capitalize">{hoje}</p>
         </div>
-        <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries()} className="gap-1.5">
-          <RefreshCw size={13} />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={sincronizar} disabled={syncing} className="gap-1.5">
+            <RefreshCw size={13} className={syncing ? "animate-spin" : undefined} />
+            Sincronizar vendas
+          </Button>
+          <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries()} className="gap-1.5">
+            <RefreshCw size={13} />
+            Atualizar
+          </Button>
+        </div>
+
       </div>
 
       <div className="px-4 md:px-6 space-y-5 pb-10">
