@@ -282,6 +282,14 @@ Deno.serve(async (req) => {
       result.nuvemshop = { error: String((e as Error).message) };
     }
 
+    try {
+      const b = await syncBling(from, to);
+      result.bling = await persist(b.canais, b.produtos, "bling_api");
+    } catch (e) {
+      result.bling = { error: String((e as Error).message) };
+    }
+
+
     return new Response(JSON.stringify(result), {
       headers: { ...CORS, "Content-Type": "application/json" },
     });
