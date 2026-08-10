@@ -1,8 +1,20 @@
 # Pauta de posts — @nicefoodsbr
 
-**Período:** 31/07 a 07/08/2026
-**Status:** 🟡 Aguardando aprovação do Thiago
+**Período:** 31/07 a 07/08/2026 (replanejado a partir de 10/08)
+**Status:** ✅ Aprovada pelo Thiago em 09/08 ("Poste os aprovados")
 **Gerado em:** 30/07/2026
+
+## Status da fila (atualizado 10/08)
+
+| # | Post | Status |
+|---|------|--------|
+| 1 | 5 molhos de macarrão (TEST KITCHEN) | ✅ **Publicado 10/08** — https://www.instagram.com/p/Db27cGzoO_y/ |
+| 2 | NICE MITOS: "sem lactose = sem cremosidade" | 🟢 Aprovado — publicar 11/08 |
+| 3 | NICE INVESTIGA CASO #003 (caixinha) | 🟢 Aprovado — publicar 12/08 |
+| 4 | Dia dos Pais (café na cama) | ⏸️ Data passou (09/08) — guardar/adaptar como post genérico de café da manhã |
+| 5 | Pipoca de levedura nutricional | 🟢 Aprovado — publicar 13/08 |
+
+**Como publicar:** cenário Make **"NICE — Publicador de Posts IG (rodar sob demanda)"** (id 5895174, conexão "Instagram NICE Foods"). Fluxo: gerar criativo no Canva → exportar JPEG → atualizar blueprint (foto + legenda) → ativar cenário (Free = máx. 2 ativos; pausar "Vovó Indelicada" temporariamente se preciso) → rodar → desfazer a troca. Criativo do Dia dos Pais já criado no Canva: design `DAHRzd2P5Ro`; molhos: `DAHR44dOMGg`.
 
 Regras seguidas: claims honestos (sem promessa de milagre), tom lowercase casual,
 CTA de comentário + direct, séries existentes (TEST KITCHEN, NICE MITOS,
