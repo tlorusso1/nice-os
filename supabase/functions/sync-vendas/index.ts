@@ -146,6 +146,81 @@ async function syncNuvemshop(from: Date, to: Date) {
   return { canais, produtos };
 }
 
+// ── Bling (marketplaces: Shopee, Ritz Pay, Nice SP, etc.) ────────────────────
+const BLING_PROXY = `${Deno.env.get("SUPABASE_URL")}/functions/v1/proxy-bling`;
+
+function canalFromLoja(nome: string): string {
+  const n = nome.toLowerCase();
+  if (n.includes("shopee")) return "shopee";
+  if (n.includes("ritz")) return "ritz_pay";
+  if (n.includes("nuvem") || n.includes("tienda")) return "nuvemshop";
+  if (n.includes("sp") || n.includes("nice")) return "nice_sp";
+  if (n.includes("mercado")) return "mercado_livre";
+  if (n.includes("amazon")) return "amazon";
+  return n.replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || "bling";
+}
+
+async function blingGet(path: string) {
+  const res = await fetch(`${BLING_PROXY}${path}`, {
+    headers: { apikey: Deno.env.get("SUPABASE_ANON_KEY") ?? "" },
+  });
+  const json = await res.json().catch(() => ({}));
+  if (json?.error === "BLING_INVALID_TOKEN") throw new Error("Bling token inválido");
+  return json;
+}
+
+async function syncBling(from: Date, to: Date) {
+  const canais: Record<string, Agg> = {};
+  const produtos: Record<string, ProdAgg> = {};
+
+  // mapa de lojas → canal
+  const lojasResp = await blingGet("/lojas?pagina=1&limite=100");
+  const lojaCanal: Record<string, string> = {};
+  for (const l of lojasResp?.data ?? []) {
+    lojaCanal[String(l.id)] = canalFromLoja(String(l.descricao ?? l.nome ?? ""));
+  }
+
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  const pedidoIds: { id: string; mes: string; canal: string }[] = [];
+
+  for (let pagina = 1; pagina <= 50; pagina++) {
+    const resp = await blingGet(
+      `/pedidos/vendas?pagina=${pagina}&limite=100&dataInicial=${iso(from)}&dataFinal=${iso(to)}`,
+    );
+    const rows = resp?.data ?? [];
+    if (!Array.isArray(rows) || rows.length === 0) break;
+
+    for (const p of rows) {
+      const data = String(p.data ?? "").slice(0, 10);
+      if (!data) continue;
+      const mes = `${data.slice(0, 7)}-01`;
+      const canal = lojaCanal[String(p.loja?.id ?? "")] ?? "bling";
+      const key = `${canal}|${mes}`;
+      canais[key] ??= { pedidos: 0, faturamento: 0 };
+      canais[key].pedidos += 1;
+      canais[key].faturamento += num(p.total ?? p.totalProdutos);
+      pedidoIds.push({ id: String(p.id), mes, canal });
+    }
+    if (rows.length < 100) break;
+  }
+
+  for (const { id, mes, canal } of pedidoIds.slice(0, 300)) {
+    try {
+      const det = await blingGet(`/pedidos/vendas/${id}`);
+      for (const it of det?.data?.itens ?? []) {
+        const nome = String(it.descricao ?? "").trim();
+        if (!nome) continue;
+        const k = `${canal}|${mes}|${nome}`;
+        produtos[k] ??= { nome, sku: it.codigo ? String(it.codigo) : null, qtd: 0, faturamento: 0 };
+        produtos[k].qtd += num(it.quantidade);
+        produtos[k].faturamento += num(it.valor) * num(it.quantidade);
+      }
+    } catch (_) { /* ignora */ }
+  }
+
+  return { canais, produtos };
+}
+
 // ── persistência ─────────────────────────────────────────────────────────────
 async function persist(
   canais: Record<string, Agg>,
