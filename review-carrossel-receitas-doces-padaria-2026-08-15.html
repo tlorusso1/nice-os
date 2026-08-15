@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NICE RECEITAS — 5 doces de padaria veganizados</title>
+<style>
+  :root{--off:#F7F4EE;--azul:#2148FF;--amarelo:#FFD400;--tinta:#0d1330;}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--off);color:var(--tinta);font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;}
+  header{padding:28px 20px 16px;text-align:center;}
+  header .eyebrow{color:var(--azul);font-weight:700;letter-spacing:0.14em;text-transform:uppercase;font-size:13px;}
+  header h1{margin:8px 0 0;font-size:22px;line-height:1.25;}
+  .slides{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;gap:0;-webkit-overflow-scrolling:touch;}
+  .slides img{width:100%;flex:0 0 100%;scroll-snap-align:center;display:block;}
+  .dots{display:flex;justify-content:center;gap:6px;padding:12px;}
+  .dots span{width:6px;height:6px;border-radius:50%;background:#cfcfcf;}
+  .legenda{background:#fff;margin:16px;padding:20px;border-radius:14px;white-space:pre-wrap;line-height:1.5;font-size:15px;}
+  .legenda h2{margin:0 0 10px;font-size:14px;text-transform:uppercase;letter-spacing:0.08em;color:var(--azul);}
+  .regua{margin:20px 16px 40px;padding:18px;background:var(--azul);color:var(--off);border-radius:14px;font-size:15px;line-height:1.6;}
+  .regua b{color:var(--amarelo);}
+</style>
+</head>
+<body>
+  <header>
+    <div class="eyebrow">🥐 Nice Receitas · A-2026-08-15</div>
+    <h1>5 doces de padaria veganizados com NICE Milk</h1>
+  </header>
+  <div class="slides" id="slides">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-01.png" alt="slide 1">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-02.png" alt="slide 2">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-03.png" alt="slide 3">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-04.png" alt="slide 4">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-05.png" alt="slide 5">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-06.png" alt="slide 6">
+    <img src="carrossel-receitas-doces-padaria-2026-08-15/slide-07.png" alt="slide 7">
+  </div>
+  <div class="dots">
+    <span></span><span></span><span></span><span></span><span></span><span></span><span></span>
+  </div>
+  <div class="legenda">
+    <h2>Legenda</h2>
+    <div id="legenda-txt">carregando…</div>
+  </div>
+  <div class="regua">
+    responde no whatsapp:<br>
+    <b>"sim"</b> publica · <b>"ajusta slide N: ..."</b> ajusta · <b>"não"</b> descarta
+  </div>
+  <script>
+    fetch('carrossel-receitas-doces-padaria-2026-08-15/legenda.txt')
+      .then(r => r.text())
+      .then(t => { document.getElementById('legenda-txt').textContent = t; })
+      .catch(() => { document.getElementById('legenda-txt').textContent = '(erro ao carregar legenda)'; });
+  </script>
+</body>
+</html>
