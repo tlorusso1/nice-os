@@ -1,55 +1,40 @@
+# Sincronização automática de vendas e notas fiscais
 
+## Objetivo
 
-## Enriquecer lançamentos SISPAG com fornecedor real via planilha de conciliação
+Sincronizar Tiny e Bling sem misturar produtos de vitrine com os itens que realmente deram baixa no estoque.
 
-### Problema
-Lançamentos do extrato bancário com descrição genérica ("SISPAG TRIB/COD BARRAS", "SISPAG FORNECEDORES" etc.) ficam sem fornecedor identificado → caem em "a reclassificar" no DRE. A planilha `conciliacao_completa.xlsx` tem o detalhamento real (fornecedor, data, valor) que permite cruzar e identificar quem é quem.
+## Implementação
 
-### Solução
-Adicionar na Conciliação Bancária a opção de importar um arquivo XLSX de conciliação detalhada. O sistema cruza cada lançamento existente sem fornecedor (SISPAG etc.) com as linhas da planilha por **data + valor (±R$0,01)**, atribuindo automaticamente o fornecedor real.
+1. **Faturamento por canal**
+   - Importar pedidos aprovados/faturados do Tiny e Bling.
+   - Identificar o canal pela loja/marketplace de origem.
+   - Evitar duplicidade quando o mesmo pedido existir nos dois sistemas.
 
-### Fluxo
+2. **Produtos vendidos pela nota fiscal**
+   - Consultar notas fiscais emitidas e seus itens no Tiny e no Bling.
+   - Gravar os SKUs fiscais reais, priorizando os códigos `[B]`.
+   - Não tratar PACKs do ecommerce como baixa física de estoque.
 
-1. **Upload XLSX** — Botão "📋 Importar Conciliação Detalhada (XLSX)" na seção de conciliação
-2. **Parse no frontend** — Usar `xlsx` (SheetJS) para ler a planilha, extrair colunas: fornecedor/beneficiário, data, valor
-3. **Cross-reference** — Para cada lançamento existente em `contasFluxo` que:
-   - Não tem `fornecedorId`, OU
-   - Tem descrição genérica (SISPAG, PIX ENVIADO sem nome claro)
-   - Fazer match por `data === dataVencimento` E `|valor_planilha - valor_conta| <= 0.01`
-4. **Match → Atribuir fornecedor** — Encontrado match:
-   - Buscar fornecedor na lista por nome (fuzzy via `matchFornecedor`)
-   - Se não existe, criar novo fornecedor automaticamente
-   - Atribuir `fornecedorId` + `categoria` do fornecedor ao lançamento
-   - Salvar mapeamento descrição→fornecedor (aprendizado)
-5. **Feedback** — Toast: "✅ 87 lançamentos enriquecidos, 12 fornecedores criados, 5 sem match"
+3. **Backfill histórico**
+   - Processar mês a mês, com paginação e limite configurável.
+   - Persistir o progresso para permitir retomada segura após falhas ou limite de tempo.
+   - Reprocessar períodos de forma idempotente, substituindo os agregados da mesma fonte.
 
-### Detalhes técnicos
+4. **Atualização incremental diária**
+   - Reprocessar uma janela curta dos últimos dias para capturar emissões e alterações tardias.
+   - Manter uma execução diária única para Tiny e Bling.
+   - Registrar totais, fontes e erros para auditoria.
 
-**Novo componente ou lógica em `ConciliacaoSection.tsx`**:
-- Adicionar input file `.xlsx` separado do TXT/CSV de extrato
-- Instalar/usar `xlsx` (SheetJS) para parse client-side
-- Função `processarConciliacaoXLSX(rows, contasFluxo, fornecedores)`:
-  - Para cada row da planilha, normalizar data e valor
-  - Buscar em `contasFluxo` por match exato (data + valor)
-  - Se match, resolver fornecedor via `matchFornecedor` ou criar novo
-  - Retornar lista de updates `{ id, changes: { fornecedorId, categoria } }`
-- Chamar `onUpdateMultipleContas(updates)` para aplicar em batch
+5. **Validação**
+   - Executar o backfill com as credenciais disponíveis.
+   - Conferir totais por mês, canal, fonte e SKUs `[B]`.
+   - Validar que a atualização diária não duplica dados.
 
-**Adaptação da planilha**:
-- Detectar automaticamente as colunas relevantes (fornecedor/beneficiário, data, valor) por header ou posição
-- Suportar formatos de data DD/MM/YYYY e YYYY-MM-DD
-- Suportar valores com vírgula decimal (padrão BR)
+## Detalhes técnicos
 
-### Arquivos alterados
-
-| Arquivo | Mudança |
-|---------|---------|
-| `src/components/financeiro/ConciliacaoSection.tsx` | Botão upload XLSX + lógica de cross-reference por data+valor |
-| `package.json` | Adicionar `xlsx` (SheetJS) como dependência |
-
-### Resultado esperado
-- Os ~246 lançamentos genéricos (SISPAG) são automaticamente vinculados ao fornecedor real
-- O DRE passa a classificar corretamente essas despesas
-- Novos fornecedores são criados conforme necessário
-- Mapeamentos são salvos para futuras importações
+- A função continuará isolando falhas: Tiny pode concluir mesmo se Bling estiver temporariamente indisponível, e vice-versa.
+- O token do Bling será renovado automaticamente quando as credenciais OAuth estiverem configuradas.
+- As tabelas agregadas continuarão somente leitura para usuários; apenas a função de sincronização grava nelas.
+- A interface existente de Dashboard, Ecommerce, B2B e Vendas por Canal será mantida.
 
