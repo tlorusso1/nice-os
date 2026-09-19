@@ -266,6 +266,72 @@ export type Database = {
         }
         Relationships: []
       }
+      vendas_notas_itens: {
+        Row: {
+          access_key: string | null
+          channel: string
+          created_at: string
+          external_invoice_id: string
+          id: string
+          invoice_number: string | null
+          issued_at: string
+          line_index: number
+          metadata: Json
+          product_name: string
+          quantity: number
+          series: string | null
+          sku: string | null
+          source: string
+          status: string
+          synced_at: string
+          total_value: number
+          unit_value: number
+          updated_at: string
+        }
+        Insert: {
+          access_key?: string | null
+          channel: string
+          created_at?: string
+          external_invoice_id: string
+          id?: string
+          invoice_number?: string | null
+          issued_at: string
+          line_index: number
+          metadata?: Json
+          product_name: string
+          quantity?: number
+          series?: string | null
+          sku?: string | null
+          source: string
+          status: string
+          synced_at?: string
+          total_value?: number
+          unit_value?: number
+          updated_at?: string
+        }
+        Update: {
+          access_key?: string | null
+          channel?: string
+          created_at?: string
+          external_invoice_id?: string
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string
+          line_index?: number
+          metadata?: Json
+          product_name?: string
+          quantity?: number
+          series?: string | null
+          sku?: string | null
+          source?: string
+          status?: string
+          synced_at?: string
+          total_value?: number
+          unit_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       vendas_produtos: {
         Row: {
           atualizado_em: string
