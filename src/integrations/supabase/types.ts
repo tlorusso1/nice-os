@@ -266,6 +266,72 @@ export type Database = {
         }
         Relationships: []
       }
+      vendas_notas_itens: {
+        Row: {
+          access_key: string | null
+          channel: string
+          created_at: string
+          external_invoice_id: string
+          id: string
+          invoice_number: string | null
+          issued_at: string
+          line_index: number
+          metadata: Json
+          product_name: string
+          quantity: number
+          series: string | null
+          sku: string | null
+          source: string
+          status: string
+          synced_at: string
+          total_value: number
+          unit_value: number
+          updated_at: string
+        }
+        Insert: {
+          access_key?: string | null
+          channel: string
+          created_at?: string
+          external_invoice_id: string
+          id?: string
+          invoice_number?: string | null
+          issued_at: string
+          line_index: number
+          metadata?: Json
+          product_name: string
+          quantity?: number
+          series?: string | null
+          sku?: string | null
+          source: string
+          status: string
+          synced_at?: string
+          total_value?: number
+          unit_value?: number
+          updated_at?: string
+        }
+        Update: {
+          access_key?: string | null
+          channel?: string
+          created_at?: string
+          external_invoice_id?: string
+          id?: string
+          invoice_number?: string | null
+          issued_at?: string
+          line_index?: number
+          metadata?: Json
+          product_name?: string
+          quantity?: number
+          series?: string | null
+          sku?: string | null
+          source?: string
+          status?: string
+          synced_at?: string
+          total_value?: number
+          unit_value?: number
+          updated_at?: string
+        }
+        Relationships: []
+      }
       vendas_produtos: {
         Row: {
           atualizado_em: string
@@ -304,6 +370,96 @@ export type Database = {
           nome?: string
           qtd_vendida?: number
           sku?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vendas_sync_runs: {
+        Row: {
+          channels: number
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          invoices: number
+          metadata: Json
+          mode: string
+          orders: number
+          period_end: string
+          period_start: string
+          products: number
+          source: string
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          channels?: number
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          invoices?: number
+          metadata?: Json
+          mode: string
+          orders?: number
+          period_end: string
+          period_start: string
+          products?: number
+          source: string
+          started_at?: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          channels?: number
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          invoices?: number
+          metadata?: Json
+          mode?: string
+          orders?: number
+          period_end?: string
+          period_start?: string
+          products?: number
+          source?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vendas_sync_state: {
+        Row: {
+          attempts: number
+          created_at: string
+          last_error: string | null
+          last_success_at: string | null
+          next_month: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          next_month?: string | null
+          source: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          next_month?: string | null
+          source?: string
+          status?: string
           updated_at?: string
         }
         Relationships: []
