@@ -3,6 +3,7 @@
 ## Em andamento
 
 - [x] Localizar onde custos fixos, estoques e demais dados antigos estão persistidos e explicar por que não aparecem no banco.
+- [ ] Restaurar a edição e atualização dos dados financeiros e de estoque na tela Operações.
 - [ ] Sincronizar automaticamente vendas e notas fiscais do Tiny e Bling.
   - [x] Importar histórico com backfill paginado e retomável.
   - [x] Atualizar diariamente somente a janela incremental necessária.
