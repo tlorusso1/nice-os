@@ -308,6 +308,96 @@ export type Database = {
         }
         Relationships: []
       }
+      vendas_sync_runs: {
+        Row: {
+          channels: number
+          created_at: string
+          error_message: string | null
+          finished_at: string | null
+          id: string
+          invoices: number
+          metadata: Json
+          mode: string
+          orders: number
+          period_end: string
+          period_start: string
+          products: number
+          source: string
+          started_at: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          channels?: number
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          invoices?: number
+          metadata?: Json
+          mode: string
+          orders?: number
+          period_end: string
+          period_start: string
+          products?: number
+          source: string
+          started_at?: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          channels?: number
+          created_at?: string
+          error_message?: string | null
+          finished_at?: string | null
+          id?: string
+          invoices?: number
+          metadata?: Json
+          mode?: string
+          orders?: number
+          period_end?: string
+          period_start?: string
+          products?: number
+          source?: string
+          started_at?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      vendas_sync_state: {
+        Row: {
+          attempts: number
+          created_at: string
+          last_error: string | null
+          last_success_at: string | null
+          next_month: string | null
+          source: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          next_month?: string | null
+          source: string
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          last_error?: string | null
+          last_success_at?: string | null
+          next_month?: string | null
+          source?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       weekly_snapshots: {
         Row: {
           ads_maximo: number | null
