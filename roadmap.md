@@ -2,6 +2,7 @@
 
 ## Em andamento
 
+- [ ] Localizar onde custos fixos, estoques e demais dados antigos estão persistidos e explicar por que não aparecem no banco.
 - [ ] Sincronizar automaticamente vendas e notas fiscais do Tiny e Bling.
   - [ ] Importar histórico com backfill paginado e retomável.
   - [ ] Atualizar diariamente somente a janela incremental necessária.
