@@ -68,6 +68,11 @@ function channelFromStore(name: string): string {
 }
 
 async function assertAuthorized(req: Request) {
+  const cronSecret = req.headers.get("X-Sync-Secret") ?? "";
+  if (cronSecret) {
+    const { data } = await db.from("app_config").select("value").eq("key", "vendas_sync_cron_secret").maybeSingle();
+    if (data?.value && cronSecret === data.value) return;
+  }
   const authorization = req.headers.get("Authorization") ?? "";
   const token = authorization.replace(/^Bearer\s+/i, "");
   if (token && token === SERVICE_ROLE_KEY) return;
