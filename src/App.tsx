@@ -24,6 +24,7 @@ const FinanceiroPage    = lazy(() => import("./modules/financeiro/pages/Financei
 const EcommercePage     = lazy(() => import("./modules/ecommerce/pages/EcommercePage"));
 const VendasCanaisPage  = lazy(() => import("./modules/ecommerce/pages/VendasCanaisPage"));
 const MarketingPage     = lazy(() => import("./modules/marketing/pages/MarketingPage"));
+const AprovacoesPage    = lazy(() => import("./modules/marketing/pages/AprovacoesPage"));
 const AtendimentoPage   = lazy(() => import("./modules/atendimento/pages/AtendimentoPage"));
 const SupplyPage        = lazy(() => import("./modules/supply/pages/SupplyPage"));
 const ProdutosPage      = lazy(() => import("./modules/produtos/pages/ProdutosPage"));
@@ -88,6 +89,7 @@ const App = () => (
                           <Route path="/ecommerce/*"  element={<EcommercePage />} />
                           <Route path="/canais/*"     element={<VendasCanaisPage />} />
                           <Route path="/marketing/*"  element={<MarketingPage />} />
+                          <Route path="/aprovar/*"    element={<AprovacoesPage />} />
                           <Route path="/atendimento/*" element={<AtendimentoPage />} />
                           <Route path="/supply/*"     element={<SupplyPage />} />
                           <Route path="/produtos/*"   element={<ProdutosPage />} />

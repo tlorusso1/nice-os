@@ -167,6 +167,8 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
           navigateFallbackDenylist: [/^\/\.lovable\/oauth/, /^\/~oauth/],
+          // Web Push: importa os handlers de push/notificationclick pro SW gerado
+          importScripts: ["/push-handler.js"],
         },
       }),
     ].filter(Boolean),
