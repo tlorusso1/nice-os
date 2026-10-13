@@ -1,8 +1,11 @@
+import { formatMoney as fmt, formatCompact as fmtK, formatRate, formatNumber, currentData } from "../lib/dataQuality";
+import { SourceStatus } from "../components/SourceStatus";
+import { isMetaConfigured } from "../api/metaAds";
 import { useState } from "react";
 import {
-  RefreshCw, TrendingUp, MousePointerClick, ShoppingCart, Info,
+  RefreshCw, TrendingUp, MousePointerClick, ShoppingCart,
   LayoutDashboard, BadgeDollarSign, Smartphone, BarChart3, Mail,
-  Construction, Instagram, Youtube,
+  Instagram, Youtube,
 } from "lucide-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -70,33 +73,6 @@ const SOCIAL_TABS: { id: SocialTab; label: string; icon: React.ElementType }[] =
   { id: "youtube",   label: "YouTube",   icon: Youtube   },
 ];
 
-// ─── Helpers ───────────────────────────────────────────────────
-const fmt  = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-const fmtK = (v: number) =>
-  v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v);
-
-// ─── Stub component for sections in development ────────────────
-function ComingSoonSection({ icon: Icon, title, description }: {
-  icon: React.ElementType; title: string; description: string;
-}) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-center gap-3 text-muted-foreground">
-      <div className="w-14 h-14 rounded-2xl bg-muted/60 flex items-center justify-center">
-        <Icon size={28} className="opacity-40" />
-      </div>
-      <div>
-        <p className="text-sm font-semibold text-foreground">{title}</p>
-        <p className="text-xs mt-1 opacity-70 max-w-xs">{description}</p>
-      </div>
-      <span className="flex items-center gap-1.5 text-[11px] px-3 py-1.5 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900 rounded-full font-medium">
-        <Construction size={11} />
-        Em desenvolvimento — chegando em breve
-      </span>
-    </div>
-  );
-}
-
 // ─── Page ─────────────────────────────────────────────────────
 export default function MarketingPage() {
   const [section,    setSection]    = useState<Section>("overview");
@@ -104,19 +80,21 @@ export default function MarketingPage() {
   const [socialTab,  setSocialTab]  = useState<SocialTab>("instagram");
 
   const qc = useQueryClient();
-  const { totalSpend, totalRevenue, roasGeral, channels, isLoading, isMock } = useMarketingConsolidado();
+  const { totalSpend, totalRevenue, totalClicks, roasGeral, channels, isLoading, coverage, sources } = useMarketingConsolidado();
   const metaInsights   = useMetaInsights();
   const metaCampaigns  = useMetaCampaigns();
   const googleCampaigns = useGoogleCampaigns();
   const metaAdSets     = useMetaAdSets();
   const metaAds        = useMetaAds();
 
-  const meta = metaInsights.data;
+  const meta = currentData(metaInsights);
+  const campaignData = currentData(metaCampaigns);
+  const googleCampaignData = currentData(googleCampaigns);
 
   const allCampaigns = [
-    ...(metaCampaigns.data ?? []).map((c) => ({ ...c, channel: "meta" as const })),
+    ...(campaignData ?? []).map((c) => ({ ...c, channel: "meta" as const })),
     ...(isGoogleConfigured()
-      ? (googleCampaigns.data ?? []).map((c) => ({
+      ? (googleCampaignData ?? []).map((c) => ({
           id: c.id,
           name: c.name,
           status: c.status === "ENABLED" ? "ACTIVE" as const : "PAUSED" as const,
@@ -124,16 +102,16 @@ export default function MarketingPage() {
           dailyBudget: c.budget,
           insights: {
             spend: c.spend, impressions: c.impressions, clicks: c.clicks,
-            reach: 0, ctr: c.ctr, cpc: c.cpc, cpp: 0,
+            reach: null, ctr: c.ctr, cpc: c.cpc, cpp: null,
             purchases: c.conversions, purchaseValue: c.conversionValue, roas: c.roas,
           },
           channel: "google" as const,
         }))
       : []),
-  ].sort((a, b) => b.insights.spend - a.insights.spend);
+  ].sort((a, b) => (b.insights.spend ?? -1) - (a.insights.spend ?? -1));
 
-  const adsets = (metaAdSets.data ?? []).sort((a, b) => b.insights.spend - a.insights.spend);
-  const ads    = (metaAds.data    ?? []).sort((a, b) => b.insights.spend - a.insights.spend);
+  const adsets = [...(currentData(metaAdSets) ?? [])].sort((a, b) => (b.insights.spend ?? -1) - (a.insights.spend ?? -1));
+  const ads    = [...(currentData(metaAds) ?? [])].sort((a, b) => (b.insights.spend ?? -1) - (a.insights.spend ?? -1));
 
   // Social
   const igProfile  = useInstagramProfile();
@@ -150,6 +128,15 @@ export default function MarketingPage() {
   const perfitCampaigns = usePerfitCampaigns();
   const perfitSummary   = usePerfitSummary();
 
+  const igProfileData = currentData(igProfile);
+  const igMediaData = currentData(igMedia);
+  const igInsightsData = currentData(igInsights);
+  const ytStatsData = currentData(ytStats);
+  const ytVideosData = currentData(ytVideos);
+  const ga4TrafficData = currentData(ga4Traffic);
+  const ga4SummaryData = currentData(ga4Summary);
+  const perfitCampaignsData = currentData(perfitCampaigns);
+  const perfitSummaryData = currentData(perfitSummary);
   return (
     <div className="flex flex-col animate-fade-in">
 
@@ -158,9 +145,7 @@ export default function MarketingPage() {
         <div>
           <h1 className="text-lg font-semibold">Marketing & Ads</h1>
           <p className="text-xs text-muted-foreground">
-            {isLoading
-              ? "Carregando..."
-              : `Este mês · ${allCampaigns.filter((c) => c.status === "ACTIVE").length} campanhas ativas`}
+            {"Fonte, período e disponibilidade por integração"}
           </p>
         </div>
         <Button
@@ -195,62 +180,59 @@ export default function MarketingPage() {
         </div>
       </div>
 
-      {/* ─── Demo banner ─────────────────────────────────────── */}
-      {isMock && section === "overview" && (
-        <div className="mx-4 md:mx-6 mb-4 flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
-          <Info size={13} className="mt-0.5 shrink-0" />
-          <span>
-            <strong>Dados de demonstração.</strong> Para conectar dados reais, adicione seus tokens de
-            Meta Ads e Google Ads no{" "}
-            <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">.env.local</code>.
-          </span>
-        </div>
-      )}
+      <div className="mx-4 md:mx-6 mb-4 space-y-2">
+        {(section === "overview" || section === "ads") && <>
+          <SourceStatus source="Meta Ads" period="Mês atual, no fuso da conta de anúncios" configured={isMetaConfigured()} queries={section === "overview" ? [metaInsights] : adsTab === "campanhas" ? [metaCampaigns] : adsTab === "publicos" || adsTab === "upload" ? [metaAdSets] : [metaAds]} />
+          <SourceStatus source="Google Ads" period="Não disponível" configured={false} queries={[]} unavailableReason="Integração ainda não implementada" />
+        </>}
+        {section === "social" && socialTab === "instagram" && <SourceStatus source="Instagram" period="Perfil atual; insights dos últimos 30 dias; até 20 posts recentes" configured={isInstagramConfigured()} queries={[igProfile, igInsights, igMedia]} />}
+        {section === "social" && socialTab === "youtube" && <SourceStatus source="YouTube" period="Totais acumulados do canal e até 10 vídeos recentes" configured={isYouTubeConfigured()} queries={[ytStats, ytVideos]} />}
+        {section === "analytics" && <SourceStatus source="Google Analytics 4" period="29 dias atrás até hoje, inclusive, no fuso da propriedade" configured={isGA4Configured()} queries={[ga4Summary, ga4Traffic]} />}
+        {section === "email" && <SourceStatus source="Perfit" period="Resumo sem período informado pela API; até 20 campanhas" configured={isPerfitConfigured()} queries={[perfitSummary, perfitCampaigns]} />}
+      </div>
 
       {/* ══════════════════════════════════════════════════════
           SEÇÃO: VISÃO GERAL
       ══════════════════════════════════════════════════════ */}
       {section === "overview" && (
         <div className="space-y-5 px-4 md:px-6 pb-8">
+          <p className="text-xs text-muted-foreground">
+            {coverage === "unavailable" ? "Sem métricas disponíveis. Campos ausentes aparecem como —." :
+              `${coverage === "partial" ? "Consolidado parcial" : "Consolidado"} · fontes incluídas: ${sources}. Dados indisponíveis não entram como zero.`}
+          </p>
+          {coverage !== "unavailable" && <p className="text-xs text-muted-foreground">Receita atribuída pelas plataformas; pode haver sobreposição entre canais.</p>}
           {/* KPIs */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
             {[
               {
-                label: "Investimento total",
+                label: "Investimento disponível",
                 value: isLoading ? null : fmt(totalSpend),
                 icon: <ShoppingCart size={13} className="text-muted-foreground" />,
                 sub: "este mês",
               },
               {
-                label: "Receita atribuída",
+                label: "Receita atribuída disponível",
                 value: isLoading ? null : fmt(totalRevenue),
                 icon: <TrendingUp size={13} className="text-emerald-500" />,
                 sub: "via ads",
               },
               {
-                label: "ROAS geral",
-                value: isLoading ? null : `${roasGeral.toFixed(2)}x`,
+                label: "ROAS disponível",
+                value: isLoading ? null : formatRate(roasGeral, "x"),
                 icon: null,
-                sub: roasGeral >= 3 ? "✅ Saudável" : roasGeral >= 2 ? "⚠️ Atenção" : "🔴 Baixo",
+                sub: roasGeral === null ? "Sem base para avaliar" : roasGeral >= 3 ? "✅ Saudável" : roasGeral >= 2 ? "⚠️ Atenção" : "🔴 Baixo",
                 valueColor:
-                  roasGeral >= 3
+                  roasGeral === null ? "text-muted-foreground" : roasGeral >= 3
                     ? "text-emerald-600 dark:text-emerald-400"
                     : roasGeral >= 2
                     ? "text-amber-600 dark:text-amber-400"
                     : "text-red-500",
               },
               {
-                label: "Cliques totais",
-                value: isLoading
-                  ? null
-                  : fmtK(
-                      (meta?.clicks ?? 0) +
-                        (isGoogleConfigured()
-                          ? (googleCampaigns.data?.reduce((s, c) => s + c.clicks, 0) ?? 0)
-                          : 0)
-                    ),
+                label: "Cliques disponíveis",
+                value: isLoading ? null : fmtK(totalClicks),
                 icon: <MousePointerClick size={13} className="text-muted-foreground" />,
-                sub: `CTR ${(meta?.ctr ?? 0).toFixed(1)}% Meta`,
+                sub: `CTR Meta: ${formatRate(meta?.ctr, "%", 1)}`,
               },
             ].map(({ label, value, icon, sub, valueColor }) => (
               <div key={label} className="metric-card">
@@ -291,9 +273,9 @@ export default function MarketingPage() {
                   { label: "Impressões", value: fmtK(meta.impressions) },
                   { label: "Alcance",    value: fmtK(meta.reach)       },
                   { label: "Cliques",    value: fmtK(meta.clicks)      },
-                  { label: "CTR",        value: `${meta.ctr.toFixed(2)}%` },
+                  { label: "CTR",        value: formatRate(meta.ctr) },
                   { label: "CPC",        value: fmt(meta.cpc)          },
-                  { label: "Compras",    value: String(meta.purchases)  },
+                  { label: "Compras",    value: formatNumber(meta.purchases)  },
                 ].map(({ label, value }) => (
                   <div key={label} className="bg-muted/40 rounded-lg p-2.5 text-center">
                     <p className="text-[10px] text-muted-foreground mb-0.5">{label}</p>
@@ -333,9 +315,9 @@ export default function MarketingPage() {
           {adsTab === "campanhas" && (
             <>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider -mb-2">
-                Campanhas ({allCampaigns.length})
+                Campanhas ({campaignData || googleCampaignData ? allCampaigns.length : "—"}) · até 20 por fonte
               </p>
-              {isLoading ? (
+              {metaCampaigns.isLoading || googleCampaigns.isLoading ? (
                 <div className="space-y-2">
                   {[...Array(4)].map((_, i) => (
                     <div key={i} className="h-14 bg-muted animate-pulse rounded-lg" />
@@ -343,6 +325,7 @@ export default function MarketingPage() {
                 </div>
               ) : (
                 <div className="space-y-2">
+                  {allCampaigns.length === 0 && <p className="text-sm text-muted-foreground">{campaignData || googleCampaignData ? "Nenhuma campanha retornada." : "Campanhas indisponíveis."}</p>}
                   {allCampaigns.map((c) => (
                     <CampanhaCard key={`${c.channel}-${c.id}`} campanha={c} />
                   ))}
@@ -355,7 +338,7 @@ export default function MarketingPage() {
           {adsTab === "publicos" && (
             <>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider -mb-2">
-                Públicos / Ad Sets ({adsets.length})
+                Públicos / Ad Sets ({currentData(metaAdSets) ? adsets.length : "—"}) · até 30
               </p>
               {metaAdSets.isLoading ? (
                 <div className="space-y-2">
@@ -365,7 +348,7 @@ export default function MarketingPage() {
                 </div>
               ) : adsets.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">
-                  Nenhum público encontrado.
+                  {currentData(metaAdSets) ? "Nenhum público retornado." : "Públicos indisponíveis."}
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -381,7 +364,7 @@ export default function MarketingPage() {
           {adsTab === "criativos" && (
             <>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider -mb-2">
-                Criativos / Ads ({ads.length})
+                Criativos / Ads ({currentData(metaAds) ? ads.length : "—"}) · até 50
               </p>
               {metaAds.isLoading ? (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -391,7 +374,7 @@ export default function MarketingPage() {
                 </div>
               ) : ads.length === 0 ? (
                 <div className="text-center py-12 text-muted-foreground text-sm">
-                  Nenhum criativo encontrado.
+                  {currentData(metaAds) ? "Nenhum criativo retornado." : "Criativos indisponíveis."}
                 </div>
               ) : (
                 <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
@@ -409,7 +392,7 @@ export default function MarketingPage() {
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider -mb-2">
                 Upload em massa de criativos
               </p>
-              <BulkUploadPanel adSets={adsets} />
+              {isMetaConfigured() && !metaAdSets.isError ? <BulkUploadPanel adSets={adsets} /> : <p className="text-sm text-muted-foreground">Upload indisponível sem integração Meta Ads e consulta de públicos válida.</p>}
             </>
           )}
         </div>
@@ -420,31 +403,6 @@ export default function MarketingPage() {
       ══════════════════════════════════════════════════════ */}
       {section === "social" && (
         <div className="flex flex-col px-4 md:px-6 pb-8 gap-4">
-          {/* Mock banners */}
-          {!isInstagramConfigured() && socialTab === "instagram" && (
-            <div className="flex items-start gap-2 p-3 bg-purple-50 dark:bg-purple-950/20 border border-purple-200 dark:border-purple-900 rounded-lg text-xs text-purple-800 dark:text-purple-300">
-              <Info size={13} className="mt-0.5 shrink-0" />
-              <span>
-                <strong>Dados de demonstração.</strong> Para conectar dados reais, adicione{" "}
-                <code className="font-mono bg-purple-100 dark:bg-purple-900/40 px-1 rounded">VITE_INSTAGRAM_CONFIGURED=true</code>{" "}
-                ao <code className="font-mono bg-purple-100 dark:bg-purple-900/40 px-1 rounded">.env.local</code>.
-                O token Meta já está configurado.
-              </span>
-            </div>
-          )}
-          {!isYouTubeConfigured() && socialTab === "youtube" && (
-            <div className="flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg text-xs text-red-800 dark:text-red-300">
-              <Info size={13} className="mt-0.5 shrink-0" />
-              <span>
-                <strong>Dados de demonstração.</strong> Para dados reais, adicione{" "}
-                <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 rounded">YOUTUBE_API_KEY</code>{" "}
-                e{" "}
-                <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 rounded">VITE_YOUTUBE_CHANNEL_ID</code>{" "}
-                ao <code className="font-mono bg-red-100 dark:bg-red-900/40 px-1 rounded">.env.local</code>.
-              </span>
-            </div>
-          )}
-
           {/* Social sub-tabs */}
           <div className="flex gap-1 bg-muted/40 p-1 rounded-lg">
             {SOCIAL_TABS.map(({ id, label, icon: Icon }) => (
@@ -467,18 +425,15 @@ export default function MarketingPage() {
           {/* Instagram */}
           {socialTab === "instagram" && (
             <div className="space-y-4">
-              {igProfile.data && <IGProfileCard profile={igProfile.data} />}
-              {igInsights.data && (
-                <IGInsightsBar insights={igInsights.data} isLoading={igInsights.isLoading} />
+              {igProfileData && <IGProfileCard profile={igProfileData} />}
+              {igInsightsData && (
+                <IGInsightsBar insights={igInsightsData} isLoading={igInsights.isLoading} />
               )}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Posts recentes
                 </p>
-                <IGMediaGrid
-                  media={igMedia.data ?? []}
-                  isLoading={igMedia.isLoading}
-                />
+                {(igMediaData || igMedia.isLoading) && <IGMediaGrid media={igMediaData ?? []} isLoading={igMedia.isLoading} />}
               </div>
             </div>
           )}
@@ -486,15 +441,12 @@ export default function MarketingPage() {
           {/* YouTube */}
           {socialTab === "youtube" && (
             <div className="space-y-4">
-              {ytStats.data && <YTChannelCard stats={ytStats.data} />}
+              {ytStatsData && <YTChannelCard stats={ytStatsData} />}
               <div>
                 <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                  Vídeos recentes ({ytVideos.data?.length ?? 0})
+                  Vídeos recentes ({ytVideosData?.length ?? "—"})
                 </p>
-                <YTVideoList
-                  videos={ytVideos.data ?? []}
-                  isLoading={ytVideos.isLoading}
-                />
+                {(ytVideosData || ytVideos.isLoading) && <YTVideoList videos={ytVideosData ?? []} isLoading={ytVideos.isLoading} />}
               </div>
             </div>
           )}
@@ -506,27 +458,14 @@ export default function MarketingPage() {
       ══════════════════════════════════════════════════════ */}
       {section === "analytics" && (
         <div className="px-4 md:px-6 pb-8 space-y-4">
-          {!isGA4Configured() && (
-            <div className="flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
-              <Info size={13} className="mt-0.5 shrink-0" />
-              <span>
-                <strong>Dados de demonstração.</strong> Para dados reais do GA4, crie uma Service Account no
-                Google Cloud, conceda acesso à propriedade GA4 e adicione{" "}
-                <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">GOOGLE_SA_KEY_JSON</code>{" "}
-                + <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">VITE_GA4_PROPERTY_ID</code>{" "}
-                ao <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">.env.local</code>.
-              </span>
-            </div>
-          )}
-
           {/* KPIs de resumo */}
-          {ga4Summary.data && (
+          {ga4SummaryData && (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
               {[
-                { label: "Sessões (30d)",  value: ga4Summary.data.totalSessions.toLocaleString("pt-BR"),  color: "text-foreground" },
-                { label: "Usuários",       value: ga4Summary.data.totalUsers.toLocaleString("pt-BR"),      color: "text-foreground" },
-                { label: "Conversões",     value: ga4Summary.data.totalConversions.toLocaleString("pt-BR"), color: "text-emerald-600 dark:text-emerald-400" },
-                { label: "Receita (GA4)",  value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(ga4Summary.data.totalRevenue), color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Sessões (30d)",  value: ga4SummaryData.totalSessions.toLocaleString("pt-BR"),  color: "text-foreground" },
+                { label: "Usuários",       value: ga4SummaryData.totalUsers.toLocaleString("pt-BR"),      color: "text-foreground" },
+                { label: "Conversões",     value: ga4SummaryData.totalConversions.toLocaleString("pt-BR"), color: "text-emerald-600 dark:text-emerald-400" },
+                { label: "Receita (GA4)",  value: new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(ga4SummaryData.totalRevenue), color: "text-emerald-600 dark:text-emerald-400" },
               ].map(({ label, value, color }) => (
                 <div key={label} className="metric-card">
                   <p className="text-xs text-muted-foreground mb-1">{label}</p>
@@ -540,21 +479,24 @@ export default function MarketingPage() {
           )}
 
           {/* Orgânico vs Pago */}
-          {ga4Summary.data && (
-            <OrganicVsPaidCard summary={ga4Summary.data} isLoading={ga4Summary.isLoading} />
+          {ga4SummaryData && (
+            <OrganicVsPaidCard summary={ga4SummaryData} isLoading={ga4Summary.isLoading} />
           )}
 
           {/* Charts */}
-          <GA4TrafficChart data={ga4Traffic.data ?? []} isLoading={ga4Traffic.isLoading} />
-          <GA4RevenueChart data={ga4Traffic.data ?? []} isLoading={ga4Traffic.isLoading} />
+          {ga4TrafficData?.length === 0 && <p className="text-sm text-muted-foreground">Nenhuma linha retornada para este período.</p>}
+          {!!ga4TrafficData?.length && <>
+          <GA4TrafficChart data={ga4TrafficData ?? []} isLoading={ga4Traffic.isLoading} />
+          <GA4RevenueChart data={ga4TrafficData ?? []} isLoading={ga4Traffic.isLoading} />
 
           {/* Table */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
               Detalhes por canal
             </p>
-            <GA4ChannelTable data={ga4Traffic.data ?? []} isLoading={ga4Traffic.isLoading} />
+            <GA4ChannelTable data={ga4TrafficData} isLoading={ga4Traffic.isLoading} />
           </div>
+          </>}
         </div>
       )}
 
@@ -563,29 +505,15 @@ export default function MarketingPage() {
       ══════════════════════════════════════════════════════ */}
       {section === "email" && (
         <div className="px-4 md:px-6 pb-8 space-y-4">
-          {/* Config banner */}
-          {!isPerfitConfigured() && (
-            <div className="flex items-start gap-2 p-3 bg-violet-50 dark:bg-violet-950/20 border border-violet-200 dark:border-violet-900 rounded-lg text-xs text-violet-800 dark:text-violet-300">
-              <Info size={13} className="mt-0.5 shrink-0" />
-              <span>
-                <strong>Dados de demonstração.</strong> Para dados reais, adicione{" "}
-                <code className="font-mono bg-violet-100 dark:bg-violet-900/40 px-1 rounded">PERFIT_API_KEY</code>{" "}
-                e{" "}
-                <code className="font-mono bg-violet-100 dark:bg-violet-900/40 px-1 rounded">VITE_PERFIT_CONFIGURED=true</code>{" "}
-                ao <code className="font-mono bg-violet-100 dark:bg-violet-900/40 px-1 rounded">.env.local</code>.
-              </span>
-            </div>
-          )}
-
           {/* KPIs de resumo */}
-          {perfitSummary.data && (
-            <PerfitSummaryBar summary={perfitSummary.data} isLoading={perfitSummary.isLoading} />
+          {perfitSummaryData && (
+            <PerfitSummaryBar summary={perfitSummaryData} isLoading={perfitSummary.isLoading} />
           )}
 
           {/* Lista de campanhas */}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-              Campanhas ({perfitCampaigns.data?.length ?? 0})
+              Campanhas ({perfitCampaignsData?.length ?? "—"})
             </p>
             {perfitCampaigns.isLoading ? (
               <div className="space-y-3">
@@ -593,13 +521,13 @@ export default function MarketingPage() {
                   <div key={i} className="h-32 bg-muted animate-pulse rounded-xl" />
                 ))}
               </div>
-            ) : perfitCampaigns.data?.length === 0 ? (
+            ) : perfitCampaignsData?.length === 0 ? (
               <div className="text-center py-12 text-muted-foreground text-sm">
                 Nenhuma campanha encontrada.
               </div>
             ) : (
               <div className="space-y-3">
-                {(perfitCampaigns.data ?? []).map((campaign) => (
+                {(perfitCampaignsData ?? []).map((campaign) => (
                   <PerfitCampaignCard key={campaign.id} campaign={campaign} />
                 ))}
               </div>

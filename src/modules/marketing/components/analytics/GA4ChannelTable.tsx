@@ -122,7 +122,7 @@ export function GA4ChannelTable({ data, isLoading }: Props) {
                 {fmtK(data.reduce((s, d) => s + d.sessions, 0))}
               </td>
               <td className="text-right px-3 py-2.5 tabular-nums text-muted-foreground hidden md:table-cell">
-                {fmtK(data.reduce((s, d) => s + d.users, 0))}
+                <span title="Usuários podem aparecer em mais de um canal; use o total deduplicado do resumo.">—</span>
               </td>
               <td className="hidden md:table-cell" />
               <td className="text-right px-3 py-2.5 tabular-nums">

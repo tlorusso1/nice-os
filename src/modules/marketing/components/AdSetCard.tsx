@@ -1,10 +1,9 @@
+import { formatMoney as fmt, formatCompact as fmtK, formatRate } from "../lib/dataQuality";
 import { Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { classificarCampanha, CLASSIFICACAO_CONFIG } from "../hooks/useMarketingData";
 import type { MetaAdSet } from "../hooks/useMarketingData";
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 function targetingLabel(t: MetaAdSet["targeting"]): string {
   const parts: string[] = [];
@@ -18,7 +17,7 @@ function targetingLabel(t: MetaAdSet["targeting"]): string {
 export function AdSetCard({ adset }: { adset: MetaAdSet }) {
   // Adapta para a função classificarCampanha (que espera MetaCampaign)
   const pseudo = { ...adset, objective: "", insights: adset.insights };
-  const classificacao = classificarCampanha(pseudo as any);
+  const classificacao = classificarCampanha(pseudo);
   const config = CLASSIFICACAO_CONFIG[classificacao];
   const isActive = adset.status === "ACTIVE";
 
@@ -49,12 +48,12 @@ export function AdSetCard({ adset }: { adset: MetaAdSet }) {
       <div className="grid grid-cols-4 gap-2 text-center">
         {[
           { label: "Gasto", value: fmt(adset.insights.spend) },
-          { label: "ROAS", value: adset.insights.roas > 0 ? `${adset.insights.roas.toFixed(2)}x` : "—",
+          { label: "ROAS", value: formatRate(adset.insights.roas, "x"),
             className: adset.insights.roas >= 3.5 ? "text-emerald-600 dark:text-emerald-400" :
               adset.insights.roas >= 2 ? "text-amber-600 dark:text-amber-400" :
               adset.insights.roas > 0 ? "text-red-500" : "" },
-          { label: "Alcance", value: adset.insights.reach >= 1000 ? `${(adset.insights.reach/1000).toFixed(1)}k` : String(adset.insights.reach) },
-          { label: "CTR", value: `${adset.insights.ctr.toFixed(2)}%` },
+          { label: "Alcance", value: fmtK(adset.insights.reach) },
+          { label: "CTR", value: formatRate(adset.insights.ctr) },
         ].map(({ label, value, className }) => (
           <div key={label} className="bg-muted/40 rounded-lg p-2">
             <p className="text-[10px] text-muted-foreground">{label}</p>

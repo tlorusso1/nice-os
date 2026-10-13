@@ -1,13 +1,9 @@
+import { formatCompact as fmtK } from "../../lib/dataQuality";
 import { Eye, ThumbsUp, MessageCircle, Clock, ExternalLink, PlayCircle } from "lucide-react";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { YTVideo } from "../../hooks/useMarketingData";
 
-const fmtK = (v: number) => {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000)     return `${(v / 1_000).toFixed(1)}k`;
-  return String(v);
-};
 
 function fmtDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);

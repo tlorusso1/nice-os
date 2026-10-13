@@ -1,19 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import {
   ShoppingCart, Package, TrendingUp, Clock, XCircle,
-  RefreshCw, Info, Store, CreditCard, Truck, AlertCircle,
+  RefreshCw, Store, CreditCard, Truck, AlertCircle,
 } from "lucide-react";
-import { fetchNSOrders, fetchNSStats, isNuvemshopConfigured, NuvemshopAuthError, type NSOrder } from "../api/nuvemshop";
+import { fetchNSOverview, parseNSAmount, NuvemshopAuthError, type NSOrder } from "../api/nuvemshop";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-function fmtBRL(value: number) {
+function fmtBRL(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
   return value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 function fmtDate(iso: string) {
   return new Date(iso).toLocaleString("pt-BR", {
-    day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit",
+    day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit",
   });
 }
 
@@ -72,7 +73,7 @@ function KpiCard({
 // ── Order Card ──────────────────────────────────────────────────
 
 function OrderCard({ order }: { order: NSOrder }) {
-  const total = parseFloat(order.total);
+  const total = parseNSAmount(order.total);
   return (
     <div className="rounded-xl border border-border bg-card p-4 space-y-2.5">
       {/* Header */}
@@ -101,7 +102,7 @@ function OrderCard({ order }: { order: NSOrder }) {
               {p.quantity}× {p.name}
             </span>
             <span className="text-foreground font-medium shrink-0">
-              {fmtBRL(parseFloat(p.price) * p.quantity)}
+              {fmtBRL(parseNSAmount(p.price) !== null && Number.isFinite(p.quantity) ? parseNSAmount(p.price)! * p.quantity : null)}
             </span>
           </div>
         ))}
@@ -116,7 +117,7 @@ function OrderCard({ order }: { order: NSOrder }) {
           </span>
         )}
         <Truck size={11} className="text-muted-foreground ml-auto" />
-        <span className="text-[10px] text-muted-foreground">{fmtBRL(parseFloat(order.shipping))}</span>
+        <span className="text-[10px] text-muted-foreground">{fmtBRL(parseNSAmount(order.shipping))}</span>
       </div>
     </div>
   );
@@ -125,25 +126,17 @@ function OrderCard({ order }: { order: NSOrder }) {
 // ── Main Page ───────────────────────────────────────────────────
 
 export default function EcommercePage() {
-  const stats = useQuery({
-    queryKey: ["ecommerce", "ns-stats"],
-    queryFn: fetchNSStats,
-    staleTime: 5 * 60 * 1000,
-  });
-
-  const orders = useQuery({
-    queryKey: ["ecommerce", "ns-orders"],
-    queryFn: () => fetchNSOrders({ per_page: 20 }),
+  const overview = useQuery({
+    queryKey: ["ecommerce", "ns-overview"],
+    queryFn: fetchNSOverview,
     staleTime: 3 * 60 * 1000,
+    retry: 1,
   });
-
-  const isConfigured = isNuvemshopConfigured();
-  const authError = stats.error instanceof NuvemshopAuthError || orders.error instanceof NuvemshopAuthError;
-
-  const handleRefresh = () => {
-    stats.refetch();
-    orders.refetch();
-  };
+  const data = overview.isError ? undefined : overview.data;
+  const stats = data?.stats;
+  const recentOrders = data ? [...data.orders].sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)).slice(0, 20) : [];
+  const authError = overview.error instanceof NuvemshopAuthError;
+  const handleRefresh = () => { void overview.refetch(); };
 
   return (
     <div className="min-h-screen bg-background">
@@ -163,114 +156,98 @@ export default function EcommercePage() {
         </div>
         <button
           onClick={handleRefresh}
+          disabled={overview.isFetching}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
-          <RefreshCw size={12} className={(stats.isFetching || orders.isFetching) ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={overview.isFetching ? "animate-spin" : ""} />
           Atualizar
         </button>
       </div>
 
-      {/* ── Config banner ──────────────────────────────────── */}
-      {!isConfigured && (
-        <div className="mx-4 md:mx-6 mb-3 flex items-start gap-2 p-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900 rounded-lg text-xs text-blue-800 dark:text-blue-300">
-          <Info size={13} className="mt-0.5 shrink-0" />
-          <span>
-            <strong>Dados de demonstração.</strong> Para dados reais, configure{" "}
-            <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">NUVEMSHOP_TOKEN</code>{" "}
-            e{" "}
-            <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">NUVEMSHOP_STORE_ID</code>{" "}
-            nos secrets da Supabase e adicione{" "}
-            <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">VITE_NUVEMSHOP_CONFIGURED=true</code>{" "}
-            ao <code className="font-mono bg-blue-100 dark:bg-blue-900/40 px-1 rounded">.env.local</code>.
-          </span>
-        </div>
-      )}
-
-      {authError && (
-        <div className="mx-4 md:mx-6 mb-3 flex items-start gap-2 p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-900 rounded-lg text-xs text-red-700 dark:text-red-400">
-          <XCircle size={13} className="mt-0.5 shrink-0" />
-          <span>
-            A Nuvemshop recusou o token configurado. Reinstale o app sob medida e atualize juntos o <strong>User ID</strong> e o <strong>Access Token</strong> da mesma instalação.
-          </span>
-        </div>
-      )}
+      <div className="mx-4 md:mx-6 mb-3 space-y-2 text-xs text-muted-foreground">
+        <p>Fonte: Nuvemshop, pedidos retornados pela API. Consulta limitada à página 1, até 200 pedidos. Indicadores desta página não representam o dia, o mês nem toda a loja.</p>
+        <p>Consultado: {data ? new Date(data.fetchedAt).toLocaleString("pt-BR") : "indisponível"}. Intervalo de criação recebido: {data?.periodStart && data.periodEnd ? `${fmtDate(data.periodStart)} a ${fmtDate(data.periodEnd)}` : data ? "sem registros" : "indisponível"} (horário local).</p>
+        <p>Alteração mais recente entre os pedidos recebidos: {data?.sourceUpdatedAt ? fmtDate(data.sourceUpdatedAt) : "não informada"}. Isso não confirma a atualização de todos os pedidos.</p>
+        <p>Receita: soma do total dos pedidos pagos, excluindo cancelados, com frete/descontos conforme a API; não equivale ao repasse líquido.</p>
+        {overview.isError && <p role="alert" className="text-red-600">{authError ? "Autenticação da Nuvemshop recusada. Verifique a integração no servidor." : "Não foi possível consultar os pedidos da Nuvemshop. Tente atualizar novamente."} Indicadores indisponíveis.</p>}
+      </div>
 
       {/* ── KPIs ───────────────────────────────────────────── */}
       <div className="px-4 md:px-6 pb-4">
-        {stats.isLoading ? (
+        {overview.isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[...Array(4)].map((_, i) => (
               <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />
             ))}
           </div>
-        ) : stats.data ? (
+        ) : stats ? (
           <>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
               <KpiCard
-                label="Hoje — Faturamento"
-                value={fmtBRL(stats.data.todayRevenue)}
-                sub={`${stats.data.todayOrders} pedidos`}
+                label="Receita paga · página 1"
+                value={fmtBRL(stats.totalRevenue)}
+                sub={stats.totalRevenue === null ? "valor ausente em pedido pago" : `${stats.paidOrders} pedidos pagos não cancelados`}
                 icon={TrendingUp}
                 color="emerald"
               />
               <KpiCard
-                label="Mês — Faturamento"
-                value={fmtBRL(stats.data.monthRevenue)}
-                sub={`${stats.data.monthOrders} pedidos`}
+                label="Pedidos · página 1"
+                value={String(stats.totalOrders)}
+                sub={`até ${data.pageSize} pedidos recebidos`}
                 icon={ShoppingCart}
                 color="blue"
               />
               <KpiCard
                 label="Ticket Médio"
-                value={fmtBRL(stats.data.avgTicket)}
-                sub="pedidos pagos"
+                value={fmtBRL(stats.avgTicket)}
+                sub="pagos não cancelados da página 1"
                 icon={CreditCard}
                 color="slate"
               />
               <KpiCard
-                label="Aguardando"
-                value={String(stats.data.pendingOrders)}
-                sub={`${stats.data.cancelledOrders} cancelados`}
-                icon={stats.data.pendingOrders > 0 ? AlertCircle : Clock}
-                color={stats.data.pendingOrders > 0 ? "yellow" : "slate"}
+                label="Aguardando · página 1"
+                value={String(stats.pendingOrders)}
+                sub={`${stats.cancelledOrders} cancelados`}
+                icon={stats.pendingOrders > 0 ? AlertCircle : Clock}
+                color={stats.pendingOrders > 0 ? "yellow" : "slate"}
               />
             </div>
           </>
-        ) : authError ? (
+        ) : overview.isError ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="Hoje — Faturamento" value="—" sub="token inválido" icon={TrendingUp} color="slate" />
-            <KpiCard label="Mês — Faturamento" value="—" sub="token inválido" icon={ShoppingCart} color="slate" />
-            <KpiCard label="Ticket Médio" value="—" sub="token inválido" icon={CreditCard} color="slate" />
-            <KpiCard label="Aguardando" value="—" sub="token inválido" icon={AlertCircle} color="red" />
+            <KpiCard label="Receita paga · página 1" value="—" sub="consulta indisponível" icon={TrendingUp} color="slate" />
+            <KpiCard label="Pedidos · página 1" value="—" sub="consulta indisponível" icon={ShoppingCart} color="slate" />
+            <KpiCard label="Ticket Médio" value="—" sub="consulta indisponível" icon={CreditCard} color="slate" />
+            <KpiCard label="Aguardando · página 1" value="—" sub="consulta indisponível" icon={AlertCircle} color="red" />
           </div>
         ) : null}
 
         {/* ── Pedidos recentes ──────────────────────────── */}
         <div className="mt-4">
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-3">
-            Pedidos recentes ({orders.data?.length ?? 0})
+            Pedidos da página recebida ({data ? recentOrders.length : "—"} de {data?.orders.length ?? "—"}; até 20 exibidos)
           </p>
 
-          {orders.isLoading ? (
+          {overview.isLoading ? (
             <div className="space-y-3">
               {[...Array(3)].map((_, i) => (
                 <div key={i} className="h-32 bg-muted animate-pulse rounded-xl" />
               ))}
             </div>
-          ) : orders.error ? (
+          ) : overview.error ? (
             <div className="flex items-center gap-2 p-4 rounded-xl border border-red-200 bg-red-50 dark:bg-red-950/20 text-xs text-red-700 dark:text-red-400">
               <XCircle size={14} />
-              Erro ao carregar pedidos. Verifique o token da Nuvemshop.
+              Pedidos indisponíveis. Verifique a conexão ou a integração no servidor e tente novamente.
             </div>
           ) : (
             <div className="space-y-3">
-              {(orders.data ?? []).length === 0 ? (
+              {recentOrders.length === 0 ? (
                 <div className="py-12 text-center">
                   <Package size={28} className="text-muted-foreground/40 mx-auto mb-2" />
                   <p className="text-sm text-muted-foreground">Nenhum pedido encontrado</p>
                 </div>
               ) : (
-                (orders.data ?? []).map((order) => (
+                recentOrders.map((order) => (
                   <OrderCard key={order.id} order={order} />
                 ))
               )}

@@ -1,13 +1,16 @@
+import { finiteNumber, monthBounds } from "@/lib/dataIntegrity";
 import { apiBase, proxyFetch } from "@/lib/apiBase";
 // Tiny API v2 — Vite proxy em dev, Supabase Edge Function em prod
 const BASE = apiBase("tiny");
-const TOKEN = import.meta.env.VITE_TINY_TOKEN;
 
 async function get<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
-  const qs = new URLSearchParams({ token: TOKEN, formato: "json", ...params });
+  const qs = new URLSearchParams({ formato: "json", ...params });
   const res = await proxyFetch(`${BASE}/${endpoint}?${qs}`);
   if (!res.ok) throw new Error(`Tiny ${endpoint}: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (!data?.retorno) throw new Error('Resposta Tiny inválida');
+  if (data.retorno.status === 'Erro' && Number(data.retorno.codigo_erro) !== 20) throw new Error('Consulta Tiny indisponível');
+  return data;
 }
 
 export interface TinyPedido {
@@ -19,31 +22,34 @@ export interface TinyPedido {
   situacao: string;
 }
 
-function parseValor(v: unknown): number {
-  if (typeof v === "number") return v;
-  if (typeof v === "string") return parseFloat(v.replace(",", ".")) || 0;
-  return 0;
+interface TinySearchResponse {
+  retorno: { pedidos?: Array<{ pedido: Omit<TinyPedido, 'valor'> & { valor: unknown } }> };
+}
+
+function parseValor(value: unknown): number {
+  const parsed = finiteNumber(value);
+  if (parsed === null) throw new Error('Valor do pedido Tiny indisponível');
+  return parsed;
 }
 
 function mesAtual() {
-  const now = new Date();
-  const m = String(now.getMonth() + 1).padStart(2, "0");
-  const a = now.getFullYear();
-  return { dataInicial: `01/${m}/${a}`, dataFinal: `31/${m}/${a}` };
+  const { start, end } = monthBounds();
+  const br = (value: string) => value.split('-').reverse().join('/');
+  return { dataInicial: br(start), dataFinal: br(end) };
 }
 
 export async function getTinyPedidosMes(): Promise<TinyPedido[]> {
   const { dataInicial, dataFinal } = mesAtual();
-  const data = await get<any>("pedidos.pesquisa.php", { dataInicial, dataFinal });
-  return (data?.retorno?.pedidos ?? []).map((p: any) => ({
+  const data = await get<TinySearchResponse>("pedidos.pesquisa.php", { dataInicial, dataFinal });
+  return (data?.retorno?.pedidos ?? []).map((p) => ({
     ...p.pedido,
     valor: parseValor(p.pedido?.valor),
   }));
 }
 
 export async function getTinyPedidosRecentes(): Promise<TinyPedido[]> {
-  const data = await get<any>("pedidos.pesquisa.php");
-  return (data?.retorno?.pedidos ?? []).map((p: any) => ({
+  const data = await get<TinySearchResponse>("pedidos.pesquisa.php");
+  return (data?.retorno?.pedidos ?? []).map((p) => ({
     ...p.pedido,
     valor: parseValor(p.pedido?.valor),
   }));

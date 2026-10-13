@@ -1,161 +1,133 @@
-/**
- * Estoque Multichannel — agrega Tiny + Nuvemshop
- *
- * Fontes:
- *   - Tiny:       GET /produtos.pesquisa.php  (requer VITE_TINY_TOKEN)
- *   - Nuvemshop:  GET /products               (requer VITE_NUVEMSHOP_CONFIGURED=true)
- *
- * Em produção: via Edge Functions (proxy-tiny / proxy-nuvemshop)
- * Em dev: via Vite proxy (/api/tiny / /api/nuvemshop)
- */
-
+/** Estoque consultado pelos proxies. Credenciais são exclusivas do servidor. */
 import { apiBase, proxyFetch } from "@/lib/apiBase";
-
-const TINY_BASE = apiBase("tiny");
-const NS_BASE   = apiBase("nuvemshop");
-const TINY_TOKEN = import.meta.env.VITE_TINY_TOKEN ?? "";
-
-// ── Interfaces ─────────────────────────────────────────────────
 
 export interface SKUEstoque {
   id: string;
   nome: string;
   sku: string;
-  /** Estoque no Tiny (fonte de verdade) */
   estoqueErp: number | null;
-  /** Estoque na Nuvemshop */
   estoqueNuvemshop: number | null;
-  /** Diferença: Tiny - Nuvemshop */
   divergencia: number | null;
-  /** Preço de custo (Tiny) */
-  preco: number;
-  /** Link direto no Tiny */
+  preco: number | null;
   urlTiny?: string;
-  status: "ok" | "baixo" | "ruptura" | "divergente";
+  status: "ok" | "baixo" | "ruptura" | "divergente" | "indisponivel";
 }
 
 export interface EstoqueStats {
   totalSkus: number;
-  skusRuptura: number;
-  skusBaixo: number;
-  skusDivergente: number;
-  coberturaMediaDias: number;
+  skusRuptura: number | null;
+  skusBaixo: number | null;
+  skusDivergente: number | null;
+  saldosConhecidos: number;
+  skusComparados: number;
+  coberturaMediaDias: null;
 }
 
-// ── Mock data ──────────────────────────────────────────────────
-
-const MOCK_SKUS: SKUEstoque[] = [
-  { id: "1", nome: "Granola Premium 500g",          sku: "GRL-500",  estoqueErp: 342, estoqueNuvemshop: 342, divergencia: 0,   preco: 18.50, status: "ok" },
-  { id: "2", nome: "Pasta de Amendoim Integral 450g", sku: "PAM-450", estoqueErp: 87,  estoqueNuvemshop: 90,  divergencia: -3,  preco: 14.90, status: "divergente" },
-  { id: "3", nome: "Mix de Nuts 200g",              sku: "MNT-200",  estoqueErp: 12,  estoqueNuvemshop: 12,  divergencia: 0,   preco: 11.20, status: "baixo" },
-  { id: "4", nome: "Barra de Cereal Cacau 30g (cx12)", sku: "BCR-12", estoqueErp: 0,  estoqueNuvemshop: 2,   divergencia: -2,  preco: 22.00, status: "ruptura" },
-  { id: "5", nome: "Blend Proteico Baunilha 1kg",   sku: "PRO-VAN",  estoqueErp: 64,  estoqueNuvemshop: 64,  divergencia: 0,   preco: 42.00, status: "ok" },
-  { id: "6", nome: "Chia Orgânica 250g",            sku: "CHI-250",  estoqueErp: 210, estoqueNuvemshop: 210, divergencia: 0,   preco: 9.80,  status: "ok" },
-  { id: "7", nome: "Aveia em Flocos Finos 500g",    sku: "AVF-500",  estoqueErp: 5,   estoqueNuvemshop: 8,   divergencia: -3,  preco: 6.50,  status: "divergente" },
-  { id: "8", nome: "Whey Protein Chocolate 900g",   sku: "WPC-900",  estoqueErp: 31,  estoqueNuvemshop: 31,  divergencia: 0,   preco: 68.00, status: "ok" },
-  { id: "9", nome: "Castanha de Caju W2 200g",      sku: "CCW-200",  estoqueErp: 0,   estoqueNuvemshop: 0,   divergencia: 0,   preco: 19.40, status: "ruptura" },
-  { id: "10", nome: "Amendoim Tostado S/ Sal 400g", sku: "AMT-400",  estoqueErp: 156, estoqueNuvemshop: 156, divergencia: 0,   preco: 8.20,  status: "ok" },
-];
-
-function mockStats(): EstoqueStats {
-  return {
-    totalSkus: MOCK_SKUS.length,
-    skusRuptura: MOCK_SKUS.filter((s) => s.status === "ruptura").length,
-    skusBaixo: MOCK_SKUS.filter((s) => s.status === "baixo").length,
-    skusDivergente: MOCK_SKUS.filter((s) => s.status === "divergente").length,
-    coberturaMediaDias: 34,
-  };
+export interface EstoqueSnapshot {
+  items: SKUEstoque[];
+  fetchedAt: string;
+  tinyPages: number | null;
+  nuvemshop: { available: boolean; fetchedAt: string | null; error: string | null };
+  warnings: string[];
 }
 
-// ── Tiny API helpers ───────────────────────────────────────────
+type JsonRecord = Record<string, unknown>;
+const record = (value: unknown): JsonRecord => value !== null && typeof value === "object" ? value as JsonRecord : {};
 
-async function getTinyProdutos(): Promise<SKUEstoque[]> {
-  const qs = new URLSearchParams({ token: TINY_TOKEN, formato: "json", situacao: "A" });
-  const res = await proxyFetch(`${TINY_BASE}/produtos.pesquisa.php?${qs}`);
-  if (!res.ok) throw new Error(`Tiny produtos: ${res.status}`);
-  const data = await res.json();
-  const produtos = data?.retorno?.produtos ?? [];
-  return produtos.map((p: any) => {
-    const prod = p.produto ?? p;
-    const estoque = parseFloat(prod.saldo_fisico ?? prod.estoque ?? "0") || 0;
-    return {
-      id: String(prod.id),
-      nome: prod.nome ?? prod.descricao ?? "",
-      sku: prod.codigo ?? "",
-      estoqueErp: estoque,
-      estoqueNuvemshop: null,
-      divergencia: null,
-      preco: parseFloat(prod.preco_custo ?? "0") || 0,
-      urlTiny: `https://erp.tiny.com.br/produtos#edit/${prod.id}`,
-      status: estoque <= 0 ? "ruptura" : estoque <= 10 ? "baixo" : "ok",
-    } as SKUEstoque;
-  });
+export function nullableNumber(value: unknown): number | null {
+  if (value === null || value === undefined || (typeof value !== "number" && typeof value !== "string") || String(value).trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
-// ── Nuvemshop API helpers ──────────────────────────────────────
-
-async function getNSEstoque(): Promise<Map<string, number>> {
-  const res = await proxyFetch(`${NS_BASE}/products?per_page=200`);
-  if (!res.ok) return new Map();
-  const data = await res.json();
-  const map = new Map<string, number>();
-  for (const product of data) {
-    for (const variant of product.variants ?? []) {
-      if (variant.sku) {
-        map.set(variant.sku, variant.stock ?? 0);
-      }
-    }
-  }
-  return map;
-}
-
-// ── Merge e status ─────────────────────────────────────────────
-
-function computeStatus(item: Omit<SKUEstoque, "status">): SKUEstoque["status"] {
-  if ((item.estoqueErp ?? 0) <= 0) return "ruptura";
-  if ((item.estoqueErp ?? 0) <= 10) return "baixo";
-  if (item.divergencia !== null && Math.abs(item.divergencia) > 0) return "divergente";
+export function computeStatus(item: Pick<SKUEstoque, "estoqueErp" | "divergencia">): SKUEstoque["status"] {
+  if (item.estoqueErp === null) return "indisponivel";
+  if (item.estoqueErp <= 0) return "ruptura";
+  if (item.divergencia !== null && item.divergencia !== 0) return "divergente";
+  if (item.estoqueErp <= 10) return "baixo";
   return "ok";
 }
 
-// ── Public API ─────────────────────────────────────────────────
-
-const isTinyConfigured = () => !!TINY_TOKEN;
-const isNSConfigured   = () => import.meta.env.VITE_NUVEMSHOP_CONFIGURED === "true";
-
-export async function fetchEstoque(): Promise<SKUEstoque[]> {
-  if (!isTinyConfigured()) {
-    await new Promise((r) => setTimeout(r, 700));
-    return MOCK_SKUS;
+async function getTinyProdutos() {
+  const qs = new URLSearchParams({ formato: "json", situacao: "A", pagina: "1" });
+  const res = await proxyFetch(`${apiBase("tiny")}/produtos.pesquisa.php?${qs}`);
+  if (!res.ok) throw new Error(`Tiny indisponível (HTTP ${res.status}).`);
+  const retorno = record(record(await res.json()).retorno);
+  // Tiny pode devolver erro de aplicação com HTTP 200. Isso não é catálogo vazio.
+  if (retorno.status !== "OK" || !Array.isArray(retorno.produtos)) {
+    throw new Error("O Tiny não confirmou uma lista válida de produtos. Verifique a integração no servidor.");
   }
+  const items = retorno.produtos.map((entry: unknown): SKUEstoque => {
+    const wrapper = record(entry);
+    const prod = record(wrapper.produto ?? entry);
+    if (!prod.id) throw new Error("O Tiny retornou um produto sem identificador.");
+    // A pesquisa de produtos pode não incluir saldo físico. Ausência é desconhecida.
+    const estoqueErp = nullableNumber(prod.saldo_fisico ?? prod.estoque);
+    return {
+      id: String(prod.id), nome: String(prod.nome ?? prod.descricao ?? "Sem nome"), sku: String(prod.codigo ?? ""),
+      estoqueErp, estoqueNuvemshop: null, divergencia: null,
+      preco: nullableNumber(prod.preco_custo),
+      urlTiny: `https://erp.tiny.com.br/produtos#edit/${encodeURIComponent(String(prod.id))}`,
+      status: computeStatus({ estoqueErp, divergencia: null }),
+    };
+  });
+  return { items, pages: nullableNumber(retorno.numero_paginas), fetchedAt: new Date().toISOString() };
+}
 
-  // Busca Tiny (obrigatório) + Nuvemshop em paralelo
-  const [tinyItems, nsMap] = await Promise.all([
-    getTinyProdutos(),
-    isNSConfigured() ? getNSEstoque() : Promise.resolve(new Map<string, number>()),
-  ]);
+async function getNSEstoque() {
+  const res = await proxyFetch(`${apiBase("nuvemshop")}/products?per_page=200&page=1`);
+  if (!res.ok) throw new Error(`Nuvemshop indisponível (HTTP ${res.status}).`);
+  const data: unknown = await res.json();
+  if (!Array.isArray(data)) throw new Error("A Nuvemshop não confirmou uma lista válida de produtos.");
+  const map = new Map<string, number | null>();
+  for (const rawProduct of data) {
+    const product = record(rawProduct);
+    if (!Array.isArray(product.variants)) throw new Error("Produto da Nuvemshop sem lista válida de variantes.");
+    for (const rawVariant of product.variants) {
+      const variant = record(rawVariant);
+      if (typeof variant.sku !== "string" || !variant.sku.trim()) continue;
+      // Estoque ilimitado/não controlado e SKU duplicado não permitem reconciliação.
+      const stock = product.stock_management === false || variant.stock_management === false ? null : nullableNumber(variant.stock);
+      map.set(variant.sku, map.has(variant.sku) ? null : stock);
+    }
+  }
+  return { map, fetchedAt: new Date().toISOString() };
+}
 
-  return tinyItems.map((item) => {
-    const ns = nsMap.has(item.sku) ? (nsMap.get(item.sku) ?? null) : null;
-    const divergencia = (item.estoqueErp !== null && ns !== null)
-      ? item.estoqueErp - ns
-      : null;
-    const merged = { ...item, estoqueNuvemshop: ns, divergencia };
+export async function fetchEstoqueSnapshot(): Promise<EstoqueSnapshot> {
+  const [tiny, ns] = await Promise.allSettled([getTinyProdutos(), getNSEstoque()]);
+  if (tiny.status === "rejected") throw tiny.reason;
+  const warnings = [
+    `Consulta limitada à página 1 do Tiny${tiny.value.pages !== null ? ` de ${tiny.value.pages}` : " (total de páginas não informado)"} e à página 1 da Nuvemshop (até 200 produtos). Os indicadores descrevem apenas os registros recebidos.`,
+    "Saldo ausente, estoque não controlado ou SKU ambíguo aparece como indisponível. A pesquisa do Tiny pode não fornecer saldo físico; ausência não indica ruptura.",
+  ];
+  const skuCounts = new Map<string, number>();
+  for (const item of tiny.value.items) skuCounts.set(item.sku, (skuCounts.get(item.sku) ?? 0) + 1);
+  const items = tiny.value.items.map((item) => {
+    const estoqueNuvemshop = ns.status === "fulfilled" && item.sku && skuCounts.get(item.sku) === 1 ? ns.value.map.get(item.sku) ?? null : null;
+    const divergencia = item.estoqueErp !== null && estoqueNuvemshop !== null ? item.estoqueErp - estoqueNuvemshop : null;
+    const merged = { ...item, estoqueNuvemshop, divergencia };
     return { ...merged, status: computeStatus(merged) };
   });
-}
-
-export async function fetchEstoqueStats(): Promise<EstoqueStats> {
-  if (!isTinyConfigured()) {
-    await new Promise((r) => setTimeout(r, 400));
-    return mockStats();
-  }
-  const skus = await fetchEstoque();
   return {
-    totalSkus: skus.length,
-    skusRuptura: skus.filter((s) => s.status === "ruptura").length,
-    skusBaixo: skus.filter((s) => s.status === "baixo").length,
-    skusDivergente: skus.filter((s) => s.status === "divergente").length,
-    coberturaMediaDias: 0, // requer histórico de saídas — futuro
+    items, fetchedAt: tiny.value.fetchedAt, tinyPages: tiny.value.pages, warnings,
+    nuvemshop: ns.status === "fulfilled"
+      ? { available: true, fetchedAt: ns.value.fetchedAt, error: null }
+      : { available: false, fetchedAt: null, error: ns.reason instanceof Error ? ns.reason.message : "Consulta à Nuvemshop falhou." },
   };
 }
+
+export function calcEstoqueStats(skus: SKUEstoque[]): EstoqueStats {
+  const known = skus.filter((s) => s.estoqueErp !== null);
+  const compared = skus.filter((s) => s.divergencia !== null);
+  return {
+    totalSkus: skus.length,
+    skusRuptura: known.length ? known.filter((s) => s.estoqueErp! <= 0).length : null,
+    skusBaixo: known.length ? known.filter((s) => s.estoqueErp! > 0 && s.estoqueErp! <= 10).length : null,
+    skusDivergente: compared.length ? compared.filter((s) => s.divergencia !== 0).length : null,
+    saldosConhecidos: known.length, skusComparados: compared.length, coberturaMediaDias: null,
+  };
+}
+
+export async function fetchEstoque(): Promise<SKUEstoque[]> { return (await fetchEstoqueSnapshot()).items; }
+export async function fetchEstoqueStats(): Promise<EstoqueStats> { return calcEstoqueStats(await fetchEstoque()); }

@@ -3,7 +3,7 @@ import { cn } from "@/lib/utils";
 
 interface IntegrationBadgeProps {
   name: string;
-  status: "connected" | "error" | "loading";
+  status: "connected" | "error" | "loading" | "unknown";
 }
 
 export function IntegrationBadge({ name, status }: IntegrationBadgeProps) {
@@ -17,7 +17,7 @@ export function IntegrationBadge({ name, status }: IntegrationBadgeProps) {
       {status === "loading" && <Loader2 size={10} className="animate-spin" />}
       {status === "connected" && <Wifi size={10} />}
       {status === "error" && <WifiOff size={10} />}
-      {name}
+      {name}{status === "unknown" ? " · não verificado" : ""}
     </div>
   );
 }

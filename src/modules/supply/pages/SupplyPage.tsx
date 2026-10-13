@@ -2,16 +2,17 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Package, AlertTriangle, XCircle, ArrowRightLeft,
-  RefreshCw, ExternalLink, Info, CheckCircle2, Search,
+  RefreshCw, ExternalLink, Info, Search,
 } from "lucide-react";
-import { fetchEstoque, fetchEstoqueStats, type SKUEstoque } from "../api/estoque";
+import { fetchEstoqueSnapshot, calcEstoqueStats, type SKUEstoque } from "../api/estoque";
 
 // ── Helpers ──────────────────────────────────────────────────────
 
-type Filter = "todos" | "ruptura" | "baixo" | "divergente";
+type Filter = "todos" | "ruptura" | "baixo" | "divergente" | "indisponivel";
 
 const STATUS_CONFIG: Record<SKUEstoque["status"], { label: string; cls: string }> = {
-  ok:         { label: "OK",         cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
+  indisponivel: { label: "Saldo indisponível", cls: "bg-muted text-muted-foreground" },
+  ok:         { label: "Saldo ERP normal",         cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400" },
   baixo:      { label: "Baixo",      cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400" },
   ruptura:    { label: "Ruptura",    cls: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400" },
   divergente: { label: "Divergente", cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400" },
@@ -53,7 +54,7 @@ function KpiCard({
 // ── SKU Row ───────────────────────────────────────────────────────
 
 function SkuRow({ sku }: { sku: SKUEstoque }) {
-  const divergeAbs = sku.divergencia !== null ? Math.abs(sku.divergencia) : null;
+
   return (
     <tr className="border-b border-border hover:bg-muted/30 transition-colors">
       <td className="px-3 py-3">
@@ -75,7 +76,7 @@ function SkuRow({ sku }: { sku: SKUEstoque }) {
       <td className="px-3 py-3 text-center text-[10px] text-muted-foreground/40 italic hidden lg:table-cell">em breve</td>
       <td className="px-3 py-3 text-center text-[10px] text-muted-foreground/40 italic hidden lg:table-cell">em breve</td>
       <td className="px-3 py-3 text-center">
-        {divergeAbs !== null && divergeAbs > 0 ? (
+        {sku.divergencia !== null ? (
           <span className="text-[11px] font-medium text-orange-500">
             {sku.divergencia! > 0 ? "+" : ""}{sku.divergencia}
           </span>
@@ -109,22 +110,21 @@ export default function SupplyPage() {
   const [filter, setFilter] = useState<Filter>("todos");
   const [search, setSearch] = useState("");
 
-  const stats = useQuery({
-    queryKey: ["supply", "stats"],
-    queryFn: fetchEstoqueStats,
-    staleTime: 5 * 60 * 1000,
-  });
-
   const skus = useQuery({
-    queryKey: ["supply", "estoque"],
-    queryFn: fetchEstoque,
+    queryKey: ["supply", "snapshot"],
+    queryFn: fetchEstoqueSnapshot,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
+  // Totais e tabela são derivados da mesma consulta.
+  const data = skus.isError ? undefined : skus.data;
+  const stats = data ? calcEstoqueStats(data.items) : undefined;
 
-  const isMock = !import.meta.env.VITE_TINY_TOKEN;
-
-  const filtered = (skus.data ?? []).filter((s) => {
-    if (filter !== "todos" && s.status !== filter) return false;
+  const filtered = (data?.items ?? []).filter((s) => {
+    if (filter === "ruptura" && (s.estoqueErp === null || s.estoqueErp > 0)) return false;
+    if (filter === "baixo" && (s.estoqueErp === null || s.estoqueErp <= 0 || s.estoqueErp > 10)) return false;
+    if (filter === "divergente" && (s.divergencia === null || s.divergencia === 0)) return false;
+    if (filter === "indisponivel" && s.estoqueErp !== null) return false;
     if (search) {
       const q = search.toLowerCase();
       return s.nome.toLowerCase().includes(q) || s.sku.toLowerCase().includes(q);
@@ -133,15 +133,15 @@ export default function SupplyPage() {
   });
 
   const handleRefresh = () => {
-    stats.refetch();
     skus.refetch();
   };
 
   const FILTERS: { id: Filter; label: string }[] = [
-    { id: "todos",      label: `Todos (${skus.data?.length ?? 0})` },
-    { id: "ruptura",    label: `Ruptura (${stats.data?.skusRuptura ?? 0})` },
-    { id: "baixo",      label: `Baixo (${stats.data?.skusBaixo ?? 0})` },
-    { id: "divergente", label: `Divergência (${stats.data?.skusDivergente ?? 0})` },
+    { id: "todos",      label: `Todos (${data?.items.length ?? "—"})` },
+    { id: "ruptura",    label: `Ruptura (${stats?.skusRuptura ?? "—"})` },
+    { id: "baixo",      label: `Baixo (${stats?.skusBaixo ?? "—"})` },
+    { id: "indisponivel", label: "Saldo indisponível" },
+    { id: "divergente", label: `Divergência (${stats?.skusDivergente ?? "—"})` },
   ];
 
   return (
@@ -162,37 +162,34 @@ export default function SupplyPage() {
         </div>
         <button
           onClick={handleRefresh}
+          disabled={skus.isFetching}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-border text-[11px] text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
         >
-          <RefreshCw size={12} className={(stats.isFetching || skus.isFetching) ? "animate-spin" : ""} />
+          <RefreshCw size={12} className={skus.isFetching ? "animate-spin" : ""} />
           Atualizar
         </button>
       </div>
 
-      {/* Mock banner */}
-      {isMock && (
-        <div className="mx-4 md:mx-6 mb-3 flex items-start gap-2 p-3 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-900 rounded-lg text-xs text-amber-800 dark:text-amber-300">
-          <Info size={13} className="mt-0.5 shrink-0" />
-          <span>
-            <strong>Dados de demonstração.</strong> Para dados reais, adicione{" "}
-            <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">VITE_TINY_TOKEN</code>{" "}
-            ao <code className="font-mono bg-amber-100 dark:bg-amber-900/40 px-1 rounded">.env.local</code>.
-          </span>
-        </div>
-      )}
+      <div className="mx-4 md:mx-6 mb-3 space-y-2 text-xs text-muted-foreground">
+        <p>Fonte: Tiny (cadastro/saldo ERP) e Nuvemshop (saldo publicado). Período: posição recebida na consulta; não é histórico.</p>
+        <p>Consultado (horário local): Tiny {data ? new Date(data.fetchedAt).toLocaleString("pt-BR") : "indisponível"}; Nuvemshop {data?.nuvemshop.fetchedAt ? new Date(data.nuvemshop.fetchedAt).toLocaleString("pt-BR") : "indisponível"}. Horário da última movimentação: não informado pelas fontes.</p>
+        {data?.warnings.map((warning) => <p key={warning} className="flex gap-2"><Info size={13} className="shrink-0 mt-0.5" />{warning}</p>)}
+        {data && !data.nuvemshop.available && <p role="alert" className="text-amber-700">Nuvemshop indisponível: {data.nuvemshop.error} A comparação de estoque está indisponível.</p>}
+        {skus.isError && <p role="alert" className="text-red-600">Não foi possível consultar o estoque. {skus.error instanceof Error ? skus.error.message : "Tente atualizar novamente."} Nenhum indicador foi substituído por zero.</p>}
+      </div>
 
       <div className="px-4 md:px-6 pb-8 space-y-4">
         {/* KPIs */}
-        {stats.isLoading ? (
+        {skus.isLoading ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted animate-pulse rounded-xl" />)}
           </div>
-        ) : stats.data ? (
+        ) : stats ? (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <KpiCard label="Total SKUs"      value={String(stats.data.totalSkus)}      sub="ativos no ERP"    icon={Package}       color="slate" />
-            <KpiCard label="Em Ruptura"      value={String(stats.data.skusRuptura)}    sub="estoque zero"     icon={XCircle}       color="red" />
-            <KpiCard label="Estoque Baixo"   value={String(stats.data.skusBaixo)}      sub="≤ 10 unidades"    icon={AlertTriangle} color="yellow" />
-            <KpiCard label="Com Divergência" value={String(stats.data.skusDivergente)} sub="Tiny ≠ Nuvemshop" icon={ArrowRightLeft} color="orange" />
+            <KpiCard label="SKUs recebidos"      value={String(stats.totalSkus)}      sub="página consultada do ERP"    icon={Package}       color="slate" />
+            <KpiCard label="Em Ruptura"      value={String(stats.skusRuptura ?? "—")}    sub={`${stats.saldosConhecidos} saldos conhecidos; ≤ 0`}     icon={XCircle}       color="red" />
+            <KpiCard label="Estoque Baixo"   value={String(stats.skusBaixo ?? "—")}      sub={`${stats.saldosConhecidos} saldos conhecidos; 1 a 10`}    icon={AlertTriangle} color="yellow" />
+            <KpiCard label="Com Divergência" value={String(stats.skusDivergente ?? "—")} sub={`${stats.skusComparados} SKUs comparáveis`} icon={ArrowRightLeft} color="orange" />
           </div>
         ) : null}
 
@@ -233,6 +230,8 @@ export default function SupplyPage() {
                 <div key={i} className="h-14 bg-muted/40 animate-pulse border-b border-border last:border-0" />
               ))}
             </div>
+          ) : skus.isError ? (
+            <p className="p-8 text-center text-sm text-muted-foreground">Estoque indisponível. Use Atualizar para tentar novamente.</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
@@ -267,7 +266,7 @@ export default function SupplyPage() {
 
         {filtered.length > 0 && (
           <p className="text-[10px] text-muted-foreground text-center">
-            {filtered.length} produto{filtered.length !== 1 ? "s" : ""} · Tiny é a fonte de verdade · ML e Shopee em breve
+            {filtered.length} produto{filtered.length !== 1 ? "s" : ""} · Saldos somente quando informados pela fonte · ML e Shopee em breve
           </p>
         )}
       </div>

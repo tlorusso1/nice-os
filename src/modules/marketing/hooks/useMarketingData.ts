@@ -1,3 +1,4 @@
+import { consolidateMarketing } from "../lib/consolidateMarketing";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { processBulkUploadQueue } from "../api/bulkUpload";
 import type { UploadQueue, UploadQueueItem } from "../api/bulkUpload";
@@ -20,11 +21,11 @@ import {
   getGoogleAccountInsights,
   getGoogleCampaigns,
   isGoogleConfigured,
-  MOCK_GOOGLE_INSIGHTS,
   type GoogleAccountInsights,
   type GoogleCampaign,
 } from "../api/googleAds";
 import {
+  isInstagramConfigured,
   getInstagramProfile,
   getInstagramMedia,
   getInstagramAccountInsights,
@@ -33,18 +34,21 @@ import {
   type IGAccountInsights,
 } from "../api/instagram";
 import {
+  isYouTubeConfigured,
   getYouTubeChannelStats,
   getYouTubeVideos,
   type YTChannelStats,
   type YTVideo,
 } from "../api/youtube";
 import {
+  isGA4Configured,
   getTrafficByChannel,
   getGA4Summary,
   type GA4ChannelBreakdown,
   type GA4Summary,
 } from "../api/ga4";
 import {
+  isPerfitConfigured,
   getPerfitCampaigns,
   getPerfitLists,
   getPerfitSummary,
@@ -65,9 +69,10 @@ export type { MetaInsights, MetaCampaign, MetaCampaignUpdate, MetaAdSet, MetaAd,
 // ── Classificação de performance ────────────────────────────────
 export type CampanhaClassificacao = "escalavel" | "monitorar" | "matar" | "pausada" | "sem_dados";
 
-export function classificarCampanha(c: MetaCampaign): CampanhaClassificacao {
+export function classificarCampanha(c: Pick<MetaCampaign, "status" | "insights">): CampanhaClassificacao {
   if (c.status === "PAUSED") return "pausada";
-  if (c.insights.spend === 0) return "sem_dados";
+  if (c.status !== "ACTIVE") return "sem_dados";
+  if (c.insights.spend === null || c.insights.roas === null || c.insights.spend === 0) return "sem_dados";
   if (c.insights.roas >= 3.5) return "escalavel";
   if (c.insights.roas >= 2) return "monitorar";
   if (c.insights.spend > 200) return "matar";
@@ -86,17 +91,19 @@ export interface ChannelSummary {
   channel: "meta" | "google" | "tiktok";
   label: string;
   color: string;
-  spend: number;
-  roas: number;
+  spend: number | null;
+  roas: number | null;
   configured: boolean;
+  status: "available" | "loading" | "error" | "unconfigured" | "unimplemented";
+  updatedAt: number;
 }
 
 export function useMetaAdSets() {
-  return useQuery({ queryKey: ["marketing", "meta", "adsets"], queryFn: getMetaAdSets, staleTime: 1000 * 60 * 15, retry: 1 });
+  return useQuery({ queryKey: ["marketing", "meta", "adsets"], queryFn: getMetaAdSets, enabled: isMetaConfigured(), staleTime: 1000 * 60 * 15, retry: 1 });
 }
 
 export function useMetaAds() {
-  return useQuery({ queryKey: ["marketing", "meta", "ads"], queryFn: getMetaAds, staleTime: 1000 * 60 * 15, retry: 1 });
+  return useQuery({ queryKey: ["marketing", "meta", "ads"], queryFn: getMetaAds, enabled: isMetaConfigured(), staleTime: 1000 * 60 * 15, retry: 1 });
 }
 
 export function useUploadMetaImage() {
@@ -111,6 +118,7 @@ export function useUploadMetaImage() {
 export function useInstagramProfile() {
   return useQuery({
     queryKey: ["marketing", "instagram", "profile"],
+    enabled: isInstagramConfigured(),
     queryFn: getInstagramProfile,
     staleTime: 1000 * 60 * 30,
     retry: 1,
@@ -120,6 +128,7 @@ export function useInstagramProfile() {
 export function useInstagramMedia() {
   return useQuery({
     queryKey: ["marketing", "instagram", "media"],
+    enabled: isInstagramConfigured(),
     queryFn: getInstagramMedia,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -129,6 +138,7 @@ export function useInstagramMedia() {
 export function useInstagramInsights() {
   return useQuery({
     queryKey: ["marketing", "instagram", "insights"],
+    enabled: isInstagramConfigured(),
     queryFn: getInstagramAccountInsights,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -139,6 +149,7 @@ export function useInstagramInsights() {
 export function useYouTubeStats() {
   return useQuery({
     queryKey: ["marketing", "youtube", "channel"],
+    enabled: isYouTubeConfigured(),
     queryFn: getYouTubeChannelStats,
     staleTime: 1000 * 60 * 60,
     retry: 1,
@@ -148,6 +159,7 @@ export function useYouTubeStats() {
 export function useYouTubeVideos() {
   return useQuery({
     queryKey: ["marketing", "youtube", "videos"],
+    enabled: isYouTubeConfigured(),
     queryFn: getYouTubeVideos,
     staleTime: 1000 * 60 * 30,
     retry: 1,
@@ -158,6 +170,7 @@ export function useYouTubeVideos() {
 export function useGA4TrafficByChannel() {
   return useQuery({
     queryKey: ["marketing", "ga4", "traffic"],
+    enabled: isGA4Configured(),
     queryFn: () => getTrafficByChannel(),
     staleTime: 1000 * 60 * 30,
     retry: 1,
@@ -167,6 +180,7 @@ export function useGA4TrafficByChannel() {
 export function useGA4Summary() {
   return useQuery({
     queryKey: ["marketing", "ga4", "summary"],
+    enabled: isGA4Configured(),
     queryFn: () => getGA4Summary(),
     staleTime: 1000 * 60 * 30,
     retry: 1,
@@ -177,6 +191,7 @@ export function useGA4Summary() {
 export function usePerfitCampaigns() {
   return useQuery({
     queryKey: ["marketing", "perfit", "campaigns"],
+    enabled: isPerfitConfigured(),
     queryFn: getPerfitCampaigns,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -186,6 +201,7 @@ export function usePerfitCampaigns() {
 export function usePerfitLists() {
   return useQuery({
     queryKey: ["marketing", "perfit", "lists"],
+    enabled: isPerfitConfigured(),
     queryFn: getPerfitLists,
     staleTime: 1000 * 60 * 30,
     retry: 1,
@@ -195,6 +211,7 @@ export function usePerfitLists() {
 export function usePerfitSummary() {
   return useQuery({
     queryKey: ["marketing", "perfit", "summary"],
+    enabled: isPerfitConfigured(),
     queryFn: getPerfitSummary,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -226,6 +243,7 @@ export function useUpdateMetaCampaign() {
 export function useMetaInsights() {
   return useQuery({
     queryKey: ["marketing", "meta", "insights"],
+    enabled: isMetaConfigured(),
     queryFn: () => getMetaAccountInsights("this_month"),
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -235,6 +253,7 @@ export function useMetaInsights() {
 export function useMetaCampaigns() {
   return useQuery({
     queryKey: ["marketing", "meta", "campaigns"],
+    enabled: isMetaConfigured(),
     queryFn: getMetaCampaigns,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -244,6 +263,7 @@ export function useMetaCampaigns() {
 export function useGoogleInsights() {
   return useQuery({
     queryKey: ["marketing", "google", "insights"],
+    enabled: isGoogleConfigured(),
     queryFn: getGoogleAccountInsights,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -253,6 +273,7 @@ export function useGoogleInsights() {
 export function useGoogleCampaigns() {
   return useQuery({
     queryKey: ["marketing", "google", "campaigns"],
+    enabled: isGoogleConfigured(),
     queryFn: getGoogleCampaigns,
     staleTime: 1000 * 60 * 15,
     retry: 1,
@@ -262,48 +283,34 @@ export function useGoogleCampaigns() {
 export function useMarketingConsolidado() {
   const meta = useMetaInsights();
   const google = useGoogleInsights();
-
-  const metaData = meta.data;
-  const googleData = google.data ?? MOCK_GOOGLE_INSIGHTS;
-
-  const totalSpend = (metaData?.spend ?? 0) + (googleData?.spend ?? 0);
-  const totalRevenue = (metaData?.purchaseValue ?? 0) + (googleData?.conversionValue ?? 0);
-  const roasGeral = totalSpend > 0 ? totalRevenue / totalSpend : 0;
-
+  // A failed refresh must not silently reuse stale data as current.
+  const metaData = isMetaConfigured() && !meta.isError ? meta.data : undefined;
+  const googleData = isGoogleConfigured() && !google.isError ? google.data : undefined;
+  const consolidated = consolidateMarketing(
+    metaData ? { spend: metaData.spend, revenue: metaData.purchaseValue, clicks: metaData.clicks } : undefined,
+    googleData ? { spend: googleData.spend, revenue: googleData.conversionValue, clicks: googleData.clicks } : undefined,
+  );
   const channels: ChannelSummary[] = [
     {
-      channel: "meta",
-      label: "Meta Ads",
-      color: "#1877F2",
-      spend: metaData?.spend ?? 0,
-      roas: metaData?.roas ?? 0,
-      configured: isMetaConfigured(),
+      channel: "meta", label: "Meta Ads", color: "#1877F2",
+      spend: metaData?.spend ?? null, roas: metaData?.roas ?? null,
+      configured: isMetaConfigured(), updatedAt: meta.dataUpdatedAt,
+      status: !isMetaConfigured() ? "unconfigured" : meta.isError ? "error" : meta.isLoading ? "loading" : metaData ? "available" : "error",
     },
     {
-      channel: "google",
-      label: "Google Ads",
-      color: "#4285F4",
-      spend: googleData?.spend ?? 0,
-      roas: googleData?.roas ?? 0,
-      configured: isGoogleConfigured(),
+      channel: "google", label: "Google Ads", color: "#4285F4",
+      spend: googleData?.spend ?? null, roas: googleData?.roas ?? null,
+      configured: isGoogleConfigured(), updatedAt: google.dataUpdatedAt,
+      status: "unimplemented",
     },
     {
-      channel: "tiktok",
-      label: "TikTok Ads",
-      color: "#010101",
-      spend: 0,
-      roas: 0,
-      configured: false,
+      channel: "tiktok", label: "TikTok Ads", color: "#010101",
+      spend: null, roas: null, configured: false, updatedAt: 0, status: "unimplemented",
     },
   ];
-
   return {
-    totalSpend,
-    totalRevenue,
-    roasGeral,
-    channels,
+    ...consolidated, channels,
     isLoading: meta.isLoading || google.isLoading,
     isError: meta.isError || google.isError,
-    isMock: !isMetaConfigured() && !isGoogleConfigured(),
   };
 }

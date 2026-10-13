@@ -10,6 +10,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.create-user]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.public-estoque]
@@ -19,21 +20,27 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.proxy-asaas]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.proxy-tiny]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.proxy-nuvemshop]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.proxy-meta]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.proxy-perfit]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.proxy-bling]
+# Auth.getUser + explicit admin role are enforced by _shared/require-admin.ts.
 verify_jwt = false
 
 [functions.sync-vendas]

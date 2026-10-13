@@ -1,9 +1,8 @@
+import { formatCompact as fmtK } from "../../lib/dataQuality";
 import { UserCircle2, ExternalLink, Image, Users } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IGProfile } from "../../hooks/useMarketingData";
 
-const fmtK = (v: number) =>
-  v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v);
 
 interface Props {
   profile: IGProfile;

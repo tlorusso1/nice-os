@@ -1,8 +1,7 @@
+import { formatCompact as fmtK } from "../../lib/dataQuality";
 import { Eye, Users, MousePointer, TrendingUp } from "lucide-react";
 import type { IGAccountInsights } from "../../hooks/useMarketingData";
 
-const fmtK = (v: number) =>
-  v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v);
 
 interface Props {
   insights: IGAccountInsights;
@@ -12,7 +11,7 @@ interface Props {
 export function IGInsightsBar({ insights, isLoading }: Props) {
   const kpis = [
     {
-      label: "Alcance (30d)",
+      label: "Alcance diário somado (30d)",
       value: fmtK(insights.reach),
       icon: <TrendingUp size={13} className="text-purple-500" />,
       color: "text-purple-600 dark:text-purple-400",
@@ -30,7 +29,7 @@ export function IGInsightsBar({ insights, isLoading }: Props) {
       color: "text-orange-600 dark:text-orange-400",
     },
     {
-      label: "Seguidores",
+      label: "Seguidores (soma diária)",
       value: fmtK(insights.followerCount),
       icon: <Users size={13} className="text-emerald-500" />,
       color: "text-emerald-600 dark:text-emerald-400",

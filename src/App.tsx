@@ -1,14 +1,15 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, type ReactNode } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { AppShell } from "@/core/layouts/AppShell";
 import { Loader2 } from "lucide-react";
+import type { ModuleId } from "@/core/store/navigation";
 import { useModuleAccess } from "@/core/hooks/useModuleAccess";
 
 // Páginas de autenticação e públicas (carregadas imediatamente)
@@ -54,6 +55,21 @@ function RoleRedirect() {
   return <Navigate to={defaultPath} replace />;
 }
 
+function ModuleBoundary({ children }: { children: ReactNode }) {
+  const { pathname } = useLocation();
+  const { roles, canAccess, isLoading } = useModuleAccess();
+  const segment = pathname.split('/')[1];
+  if (isLoading) return <PageLoader />;
+  const allowed = segment === '' || (segment === 'ritmo' ? roles.includes('admin') : canAccess(segment as ModuleId));
+  if (!allowed || roles.length === 0) return (
+    <div role="alert" className="p-6 space-y-2">
+      <h1 className="text-lg font-semibold">Acesso não autorizado</h1>
+      <p className="text-sm text-muted-foreground">Seu perfil não possui acesso a este módulo. Peça ao administrador para verificar a permissão.</p>
+    </div>
+  );
+  return children;
+}
+
 const App = () => (
   <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
     <QueryClientProvider client={queryClient}>
@@ -77,6 +93,7 @@ const App = () => (
                 element={
                   <ProtectedRoute>
                     <AppShell>
+                      <ModuleBoundary>
                       <Suspense fallback={<PageLoader />}>
                         <Routes>
                           {/* Redireciona / para o módulo padrão do role */}
@@ -100,6 +117,7 @@ const App = () => (
                           <Route path="*" element={<NotFound />} />
                         </Routes>
                       </Suspense>
+                      </ModuleBoundary>
                     </AppShell>
                   </ProtectedRoute>
                 }
