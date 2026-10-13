@@ -9,6 +9,7 @@
  *      VITE_YOUTUBE_CONFIGURED=true
  */
 
+import { metric } from "../lib/dataQuality";
 import { apiBase, proxyFetch } from "@/lib/apiBase";
 const BASE = apiBase("youtube");
 
@@ -19,10 +20,10 @@ export interface YTChannelStats {
   title: string;
   description: string;
   thumbnailUrl: string;
-  subscriberCount: number;
+  subscriberCount: number | null;
   hiddenSubscriberCount: boolean;
-  videoCount: number;
-  viewCount: number;
+  videoCount: number | null;
+  viewCount: number | null;
   publishedAt: string;
 }
 
@@ -33,88 +34,11 @@ export interface YTVideo {
   publishedAt: string;
   thumbnailUrl: string;
   duration: string; // ISO 8601, ex: "PT3M42S"
-  durationSeconds: number;
-  viewCount: number;
-  likeCount: number;
-  commentCount: number;
+  durationSeconds: number | null;
+  viewCount: number | null;
+  likeCount: number | null;
+  commentCount: number | null;
 }
-
-// ── Mock data ──────────────────────────────────────────────────
-
-const MOCK_CHANNEL: YTChannelStats = {
-  id: "UCxxxxxxxxxxxxxxxxxxxxxxxx",
-  title: "NICE FOODS",
-  description: "Canal oficial da NICE FOODS — alimentos naturais e saudáveis para o seu dia a dia.",
-  thumbnailUrl: "",
-  subscriberCount: 4820,
-  hiddenSubscriberCount: false,
-  videoCount: 48,
-  viewCount: 312000,
-  publishedAt: "2021-03-15T00:00:00Z",
-};
-
-const MOCK_VIDEOS: YTVideo[] = [
-  {
-    id: "ytv001",
-    title: "Como fazer granola caseira com NICE FOODS | Receita rápida",
-    description: "Aprenda a fazer granola caseira deliciosa usando nossos produtos.",
-    publishedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-    thumbnailUrl: "",
-    duration: "PT5M18S",
-    durationSeconds: 318,
-    viewCount: 8420,
-    likeCount: 347,
-    commentCount: 52,
-  },
-  {
-    id: "ytv002",
-    title: "Tour pela fábrica NICE FOODS — Qualidade do campo à mesa",
-    description: "Veja como produzimos nossos alimentos naturais com máximo cuidado e higiene.",
-    publishedAt: new Date(Date.now() - 9 * 24 * 60 * 60 * 1000).toISOString(),
-    thumbnailUrl: "",
-    duration: "PT8M43S",
-    durationSeconds: 523,
-    viewCount: 21300,
-    likeCount: 892,
-    commentCount: 134,
-  },
-  {
-    id: "ytv003",
-    title: "5 receitas fit com Mix de Nuts NICE FOODS",
-    description: "Cinco receitas saudáveis usando nosso mix de nuts premium.",
-    publishedAt: new Date(Date.now() - 16 * 24 * 60 * 60 * 1000).toISOString(),
-    thumbnailUrl: "",
-    duration: "PT12M07S",
-    durationSeconds: 727,
-    viewCount: 14700,
-    likeCount: 621,
-    commentCount: 89,
-  },
-  {
-    id: "ytv004",
-    title: "Benefícios da aveia — O que a ciência diz",
-    description: "Descubra todos os benefícios científicos da aveia para a sua saúde.",
-    publishedAt: new Date(Date.now() - 25 * 24 * 60 * 60 * 1000).toISOString(),
-    thumbnailUrl: "",
-    duration: "PT7M32S",
-    durationSeconds: 452,
-    viewCount: 38900,
-    likeCount: 1840,
-    commentCount: 276,
-  },
-  {
-    id: "ytv005",
-    title: "Café da manhã saudável em 5 minutos com NICE FOODS",
-    description: "Dicas rápidas de café da manhã nutritivo usando nossos produtos.",
-    publishedAt: new Date(Date.now() - 34 * 24 * 60 * 60 * 1000).toISOString(),
-    thumbnailUrl: "",
-    duration: "PT4M15S",
-    durationSeconds: 255,
-    viewCount: 9800,
-    likeCount: 412,
-    commentCount: 67,
-  },
-];
 
 // ── Helpers ────────────────────────────────────────────────────
 
@@ -126,9 +50,10 @@ export function isYouTubeConfigured(): boolean {
 }
 
 /** Converte ISO 8601 duration (PT3M42S) para segundos */
-function parseDuration(iso: string): number {
+function parseDuration(iso: string): number | null {
+  if (typeof iso !== "string") return null;
   const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-  if (!m) return 0;
+  if (!m) return null;
   return (parseInt(m[1] ?? "0") * 3600) + (parseInt(m[2] ?? "0") * 60) + parseInt(m[3] ?? "0");
 }
 
@@ -141,7 +66,7 @@ async function ytFetch<T>(path: string): Promise<T> {
 // ── Public functions ───────────────────────────────────────────
 
 export async function getYouTubeChannelStats(): Promise<YTChannelStats> {
-  if (!isYouTubeConfigured()) return MOCK_CHANNEL;
+  if (!isYouTubeConfigured()) throw new Error("youtube: integração não configurada.");
 
   const channelId = import.meta.env.VITE_YOUTUBE_CHANNEL_ID;
   const data = await ytFetch<{ items?: Record<string, unknown>[] }>(
@@ -149,7 +74,7 @@ export async function getYouTubeChannelStats(): Promise<YTChannelStats> {
   );
 
   const item = data.items?.[0] as Record<string, Record<string, string | number | boolean>> | undefined;
-  if (!item) return MOCK_CHANNEL;
+  if (!item) throw new Error("YouTube: canal não encontrado na fonte.");
 
   const snippet    = item.snippet    as Record<string, string | Record<string, string>>;
   const statistics = item.statistics as Record<string, string | boolean>;
@@ -159,16 +84,16 @@ export async function getYouTubeChannelStats(): Promise<YTChannelStats> {
     title: String(snippet.title ?? ""),
     description: String(snippet.description ?? ""),
     thumbnailUrl: (snippet.thumbnails as unknown as Record<string, { url: string }>)?.high?.url ?? "",
-    subscriberCount: parseInt(String(statistics.subscriberCount ?? "0")),
+    subscriberCount: metric(statistics.subscriberCount),
     hiddenSubscriberCount: statistics.hiddenSubscriberCount === true,
-    videoCount: parseInt(String(statistics.videoCount ?? "0")),
-    viewCount: parseInt(String(statistics.viewCount ?? "0")),
+    videoCount: metric(statistics.videoCount),
+    viewCount: metric(statistics.viewCount),
     publishedAt: String(snippet.publishedAt ?? ""),
   };
 }
 
 export async function getYouTubeVideos(): Promise<YTVideo[]> {
-  if (!isYouTubeConfigured()) return MOCK_VIDEOS;
+  if (!isYouTubeConfigured()) throw new Error("youtube: integração não configurada.");
 
   const channelId = import.meta.env.VITE_YOUTUBE_CHANNEL_ID;
 
@@ -177,6 +102,7 @@ export async function getYouTubeVideos(): Promise<YTVideo[]> {
     `/search?part=snippet&channelId=${channelId}&order=date&type=video&maxResults=10`
   );
 
+  if (!Array.isArray(searchData.items)) throw new Error("YouTube: resposta de vídeos inválida.");
   const videoIds = (searchData.items ?? []).map((i) => i.id.videoId).join(",");
   if (!videoIds) return [];
 
@@ -190,7 +116,8 @@ export async function getYouTubeVideos(): Promise<YTVideo[]> {
     }[];
   }>(`/videos?part=statistics,snippet,contentDetails&id=${videoIds}`);
 
-  return (videosData.items ?? []).map((v) => ({
+  if (!Array.isArray(videosData.items)) throw new Error("YouTube: estatísticas de vídeos indisponíveis.");
+  return videosData.items.map((v) => ({
     id: v.id,
     title: v.snippet.title,
     description: v.snippet.description,
@@ -198,8 +125,8 @@ export async function getYouTubeVideos(): Promise<YTVideo[]> {
     thumbnailUrl: v.snippet.thumbnails.high?.url ?? "",
     duration: v.contentDetails.duration,
     durationSeconds: parseDuration(v.contentDetails.duration),
-    viewCount: parseInt(v.statistics.viewCount ?? "0"),
-    likeCount: parseInt(v.statistics.likeCount ?? "0"),
-    commentCount: parseInt(v.statistics.commentCount ?? "0"),
+    viewCount: metric(v.statistics.viewCount),
+    likeCount: metric(v.statistics.likeCount),
+    commentCount: metric(v.statistics.commentCount),
   }));
 }

@@ -12,9 +12,10 @@
  *   5. Token injetado automaticamente pelo proxy /api/ga4 (vite.config.ts — Semana 3)
  */
 
+import { requireMetric } from "../lib/dataQuality";
 import { apiBase, proxyFetch } from "@/lib/apiBase";
 const BASE = `${apiBase("ga4")}/v1beta`;
-const PROPERTY_ID = import.meta.env.VITE_GA4_PROPERTY_ID ?? "properties/000000000";
+const PROPERTY_ID = import.meta.env.VITE_GA4_PROPERTY_ID ?? "";
 
 // ── Interfaces ─────────────────────────────────────────────────
 
@@ -41,8 +42,8 @@ export interface GA4Summary {
   totalUsers: number;
   totalConversions: number;
   totalRevenue: number;
-  organicShare: number;   // 0–100 %
-  paidShare: number;      // 0–100 %
+  organicShare: number | null;   // 0–100 %
+  paidShare: number | null;      // 0–100 %
 }
 
 // ── Color map for channels ─────────────────────────────────────
@@ -63,35 +64,15 @@ function channelColor(channel: string): string {
   return CHANNEL_COLORS[channel] ?? "#64748b";
 }
 
-// ── Mock data ──────────────────────────────────────────────────
-
-const MOCK_CHANNELS: GA4ChannelBreakdown[] = [
-  { channel: "Organic Search",  sessions: 8420,  users: 6830,  newUsers: 5910,  bounceRate: 42.1, conversions: 184, revenue: 12480, color: channelColor("Organic Search")  },
-  { channel: "Paid Social",     sessions: 6180,  users: 5940,  newUsers: 5840,  bounceRate: 58.3, conversions: 247, revenue: 18420, color: channelColor("Paid Social")     },
-  { channel: "Direct",          sessions: 3920,  users: 2840,  newUsers: 890,   bounceRate: 31.7, conversions: 98,  revenue: 7830,  color: channelColor("Direct")          },
-  { channel: "Organic Social",  sessions: 2840,  users: 2610,  newUsers: 2480,  bounceRate: 67.2, conversions: 42,  revenue: 2940,  color: channelColor("Organic Social")  },
-  { channel: "Paid Search",     sessions: 2140,  users: 2090,  newUsers: 2050,  bounceRate: 55.8, conversions: 94,  revenue: 7120,  color: channelColor("Paid Search")     },
-  { channel: "Email",           sessions: 1480,  users: 1320,  newUsers: 180,   bounceRate: 28.4, conversions: 67,  revenue: 5480,  color: channelColor("Email")           },
-  { channel: "Referral",        sessions: 840,   users: 780,   newUsers: 720,   bounceRate: 49.1, conversions: 18,  revenue: 1240,  color: channelColor("Referral")        },
-];
-
-const MOCK_SUMMARY: GA4Summary = {
-  totalSessions:    25820,
-  totalUsers:       22410,
-  totalConversions: 750,
-  totalRevenue:     55510,
-  organicShare:     43.6,
-  paidShare:        32.2,
-};
-
 // ── Helpers ────────────────────────────────────────────────────
 
 export function isGA4Configured(): boolean {
-  return import.meta.env.VITE_GA4_CONFIGURED === "true";
+  return Boolean(import.meta.env.VITE_GA4_CONFIGURED === "true" && PROPERTY_ID);
 }
 
 async function runReport(request: GA4ReportRequest): Promise<{
   rows?: { dimensionValues: { value: string }[]; metricValues: { value: string }[] }[];
+  rowCount?: number;
 }> {
   const res = await proxyFetch(`${BASE}/${PROPERTY_ID}:runReport`, {
     method: "POST",
@@ -104,8 +85,8 @@ async function runReport(request: GA4ReportRequest): Promise<{
 
 // ── Public functions ───────────────────────────────────────────
 
-export async function getTrafficByChannel(dateRange = { startDate: "30daysAgo", endDate: "today" }): Promise<GA4ChannelBreakdown[]> {
-  if (!isGA4Configured()) return MOCK_CHANNELS;
+export async function getTrafficByChannel(dateRange = { startDate: "29daysAgo", endDate: "today" }): Promise<GA4ChannelBreakdown[]> {
+  if (!isGA4Configured()) throw new Error("ga4: integração não configurada.");
 
   const data = await runReport({
     dimensions:  [{ name: "sessionDefaultChannelGroup" }],
@@ -114,31 +95,37 @@ export async function getTrafficByChannel(dateRange = { startDate: "30daysAgo", 
       { name: "bounceRate" }, { name: "conversions" }, { name: "purchaseRevenue" },
     ],
     dateRanges:  [dateRange],
-    limit:       20,
+    limit:       100,
   });
 
+  if (data.rowCount && data.rowCount > (data.rows?.length ?? 0)) throw new Error("GA4: resposta parcial; totais indisponíveis.");
   return (data.rows ?? []).map((row) => {
     const channel = row.dimensionValues[0]?.value ?? "Other";
     return {
       channel,
-      sessions:    parseInt(row.metricValues[0]?.value ?? "0"),
-      users:       parseInt(row.metricValues[1]?.value ?? "0"),
-      newUsers:    parseInt(row.metricValues[2]?.value ?? "0"),
-      bounceRate:  parseFloat(row.metricValues[3]?.value ?? "0") * 100,
-      conversions: parseInt(row.metricValues[4]?.value ?? "0"),
-      revenue:     parseFloat(row.metricValues[5]?.value ?? "0"),
+      sessions:    requireMetric(row.metricValues[0]?.value),
+      users:       requireMetric(row.metricValues[1]?.value),
+      newUsers:    requireMetric(row.metricValues[2]?.value),
+      bounceRate:  requireMetric(row.metricValues[3]?.value) * 100,
+      conversions: requireMetric(row.metricValues[4]?.value),
+      revenue:     requireMetric(row.metricValues[5]?.value),
       color:       channelColor(channel),
     };
   }).sort((a, b) => b.sessions - a.sessions);
 }
 
-export async function getGA4Summary(dateRange = { startDate: "30daysAgo", endDate: "today" }): Promise<GA4Summary> {
-  if (!isGA4Configured()) return MOCK_SUMMARY;
+export async function getGA4Summary(dateRange = { startDate: "29daysAgo", endDate: "today" }): Promise<GA4Summary> {
+  if (!isGA4Configured()) throw new Error("ga4: integração não configurada.");
 
-  const channels = await getTrafficByChannel(dateRange);
+  const [channels, totals] = await Promise.all([
+    getTrafficByChannel(dateRange),
+    runReport({ dimensions: [], metrics: [{ name: "sessions" }, { name: "totalUsers" }, { name: "conversions" }, { name: "purchaseRevenue" }], dateRanges: [dateRange] }),
+  ]);
+  const values = totals.rows?.[0]?.metricValues;
+  if (!values) throw new Error("GA4: sem métricas retornadas para este período.");
   const totalSessions = channels.reduce((s, c) => s + c.sessions, 0);
 
-  const organicChannels = ["Organic Search", "Organic Social", "Organic Video", "Direct", "Referral", "Email"];
+  const organicChannels = ["Organic Search", "Organic Social", "Organic Video", "Organic Shopping"];
   const paidChannels    = ["Paid Search", "Paid Social", "Cross-network"];
 
   const organicSessions = channels
@@ -150,11 +137,11 @@ export async function getGA4Summary(dateRange = { startDate: "30daysAgo", endDat
     .reduce((s, c) => s + c.sessions, 0);
 
   return {
-    totalSessions,
-    totalUsers:      channels.reduce((s, c) => s + c.users, 0),
-    totalConversions: channels.reduce((s, c) => s + c.conversions, 0),
-    totalRevenue:    channels.reduce((s, c) => s + c.revenue, 0),
-    organicShare:    totalSessions > 0 ? (organicSessions / totalSessions) * 100 : 0,
-    paidShare:       totalSessions > 0 ? (paidSessions    / totalSessions) * 100 : 0,
+    totalSessions: requireMetric(values[0]?.value),
+    totalUsers: requireMetric(values[1]?.value),
+    totalConversions: requireMetric(values[2]?.value),
+    totalRevenue: requireMetric(values[3]?.value),
+    organicShare:    totalSessions > 0 ? (organicSessions / totalSessions) * 100 : null,
+    paidShare:       totalSessions > 0 ? (paidSessions    / totalSessions) * 100 : null,
   };
 }

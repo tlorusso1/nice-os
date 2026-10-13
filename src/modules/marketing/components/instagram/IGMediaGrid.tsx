@@ -1,11 +1,10 @@
+import { formatCompact as fmtK } from "../../lib/dataQuality";
 import { Heart, MessageCircle, Bookmark, Share2, ExternalLink, Film, Images, ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { format, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import type { IGMedia } from "../../hooks/useMarketingData";
 
-const fmtK = (v: number) =>
-  v >= 1000 ? `${(v / 1000).toFixed(1)}k` : String(v);
 
 function fmtDate(iso: string) {
   try { return format(parseISO(iso), "dd/MM/yy", { locale: ptBR }); }
@@ -46,7 +45,7 @@ export function IGMediaGrid({ media, isLoading }: Props) {
   return (
     <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
       {media.map((post) => {
-        const typeConfig = MEDIA_TYPE_CONFIG[post.mediaType];
+        const typeConfig = MEDIA_TYPE_CONFIG[post.mediaType] ?? MEDIA_TYPE_CONFIG.IMAGE;
         const TypeIcon = typeConfig.icon;
 
         return (
@@ -125,7 +124,7 @@ export function IGMediaGrid({ media, isLoading }: Props) {
               </div>
 
               {/* Reach bar */}
-              {post.insights?.reach && (
+              {post.insights?.reach != null && (
                 <div className="flex items-center gap-1.5">
                   <Share2 size={9} className="text-purple-400 shrink-0" />
                   <span className="text-[10px] text-muted-foreground">

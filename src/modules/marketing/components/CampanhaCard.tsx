@@ -1,3 +1,4 @@
+import { formatMoney as fmt, formatRate, formatNumber } from "../lib/dataQuality";
 import { useState } from "react";
 import { TrendingUp, TrendingDown, Pause, Play, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -19,8 +20,6 @@ import {
   type MetaCampaign,
 } from "../hooks/useMarketingData";
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 interface Props {
   campanha: MetaCampaign & { channel?: "meta" | "google" };
@@ -36,7 +35,7 @@ export function CampanhaCard({ campanha }: Props) {
   const classificacao = classificarCampanha(campanha);
   const config = CLASSIFICACAO_CONFIG[classificacao];
   const { insights, name, dailyBudget, status } = campanha;
-  const novoBudget = Math.round(dailyBudget * 1.2 * 100) / 100;
+  const novoBudget = dailyBudget === null ? null : Math.round(dailyBudget * 1.2 * 100) / 100;
 
   const DIALOGS: Record<NonNullable<Acao>, { titulo: string; desc: string; confirmLabel: string; confirmClass: string }> = {
     escalar: {
@@ -47,7 +46,7 @@ export function CampanhaCard({ campanha }: Props) {
     },
     matar: {
       titulo: `🔴 Pausar "${name}"?`,
-      desc: `ROAS ${insights.roas.toFixed(2)}x com ${fmt(insights.spend)} investido. Isso pausará a campanha imediatamente no Meta Ads.`,
+      desc: `ROAS ${formatRate(insights.roas, "x")} com ${fmt(insights.spend)} investido. Isso pausará a campanha imediatamente no Meta Ads.`,
       confirmLabel: "Pausar campanha",
       confirmClass: "bg-red-600 hover:bg-red-700 text-white",
     },
@@ -60,9 +59,9 @@ export function CampanhaCard({ campanha }: Props) {
   };
 
   async function confirmar() {
-    if (!acaoPendente) return;
+    if (!acaoPendente || campanha.channel === "google") return;
     try {
-      if (acaoPendente === "escalar") {
+      if (acaoPendente === "escalar" && novoBudget !== null) {
         await mutateAsync({ id: campanha.id, updates: { dailyBudget: novoBudget, status: "ACTIVE" } });
         toast({ title: "✅ Budget escalado!", description: `${name}: ${fmt(dailyBudget)} → ${fmt(novoBudget)}/dia` });
       } else if (acaoPendente === "matar") {
@@ -102,7 +101,8 @@ export function CampanhaCard({ campanha }: Props) {
 
           {/* Botões de ação */}
           <div className="flex gap-1.5 shrink-0">
-            {classificacao === "escalavel" && (
+            {campanha.channel !== "google" && <>
+            {classificacao === "escalavel" && novoBudget !== null && (
               <button
                 onClick={() => setAcaoPendente("escalar")}
                 disabled={isPending}
@@ -142,6 +142,7 @@ export function CampanhaCard({ campanha }: Props) {
                 Reativar
               </button>
             )}
+            </>}
           </div>
         </div>
 
@@ -155,20 +156,20 @@ export function CampanhaCard({ campanha }: Props) {
             <p className="text-[10px] text-muted-foreground">ROAS</p>
             <p className={cn(
               "text-xs font-bold tabular-nums",
-              insights.roas === 0 ? "text-muted-foreground" :
+              insights.roas === null ? "text-muted-foreground" :
               insights.roas >= 3.5 ? "text-emerald-600 dark:text-emerald-400" :
               insights.roas >= 2 ? "text-amber-600 dark:text-amber-400" : "text-red-500"
             )}>
-              {insights.roas > 0 ? `${insights.roas.toFixed(2)}x` : "—"}
+              {formatRate(insights.roas, "x")}
             </p>
           </div>
           <div className="bg-muted/40 rounded-lg p-2">
             <p className="text-[10px] text-muted-foreground">Compras</p>
-            <p className="text-xs font-semibold tabular-nums">{insights.purchases || "—"}</p>
+            <p className="text-xs font-semibold tabular-nums">{formatNumber(insights.purchases)}</p>
           </div>
           <div className="bg-muted/40 rounded-lg p-2">
             <p className="text-[10px] text-muted-foreground">CPC</p>
-            <p className="text-xs font-semibold tabular-nums">{insights.cpc > 0 ? fmt(insights.cpc) : "—"}</p>
+            <p className="text-xs font-semibold tabular-nums">{fmt(insights.cpc)}</p>
           </div>
         </div>
 

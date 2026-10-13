@@ -1,3 +1,5 @@
+import { fetchIntegration, sanitizeResponseBody } from "../_shared/sanitize-response.ts";
+import { requireAdmin } from "../_shared/require-admin.ts";
 /**
  * proxy-nuvemshop — Supabase Edge Function
  * Injeta NUVEMSHOP_TOKEN e faz proxy para https://api.nuvemshop.com.br/v1/{store_id}
@@ -29,6 +31,9 @@ const CORS = {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  const authError = await requireAdmin(req, CORS);
+  if (authError) return authError;
+
   if (!NS_TOKEN || !NS_STORE_ID) {
     return new Response(JSON.stringify({ error: "Nuvemshop credentials are not configured" }), {
       status: 500,
@@ -47,7 +52,7 @@ serve(async (req: Request) => {
   headers.set("User-Agent", "NiceOS/1.0 (thiago@nicefoods.com.br)");
   headers.set("Content-Type", "application/json");
 
-  const res = await fetch(targetUrl, {
+  const res = await fetchIntegration(targetUrl, {
     method: req.method,
     headers,
     body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
@@ -60,7 +65,6 @@ serve(async (req: Request) => {
       path,
       storeConfigured: Boolean(NS_STORE_ID),
       tokenConfigured: Boolean(NS_TOKEN),
-      tokenPrefix: NS_TOKEN.slice(0, 4),
     });
 
     return new Response(JSON.stringify({
@@ -68,13 +72,13 @@ serve(async (req: Request) => {
       message: "Nuvemshop rejected the configured access token. Reinstall the custom app and update NUVEMSHOP_TOKEN and NUVEMSHOP_STORE_ID from the same installation.",
       upstreamStatus: 401,
     }), {
-      status: 200,
+      status: 502,
       headers: { ...CORS, "Content-Type": "application/json" },
     });
   }
 
-  return new Response(body, {
+  return new Response([204, 205, 304].includes(res.status) ? null : sanitizeResponseBody(body, [NS_TOKEN]), {
     status: res.status,
-    headers: { ...CORS, "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 });

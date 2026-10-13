@@ -9,7 +9,6 @@ import {
   useAsaasReceivables,
   useAsaasOverdue,
   useTinyPedidosMes,
-  useSaldoConsolidado,
 } from "../hooks/useFinanceiroData";
 
 const fmt = (v: number) =>
@@ -22,7 +21,6 @@ export default function FinanceiroPage() {
   const asaasRec     = useAsaasReceivables();
   const asaasOverdue = useAsaasOverdue();
   const tinyPedidos  = useTinyPedidosMes();
-  const consolidado  = useSaldoConsolidado();
 
   // A receber via Asaas
   const contasReceber = (asaasRec.data?.data ?? []).map((c) => ({
@@ -67,7 +65,7 @@ export default function FinanceiroPage() {
       <div className="flex items-center gap-2 px-4 md:px-6 pb-4 flex-wrap">
         <IntegrationBadge name="Asaas" status={st(asaasBalance)} />
         <IntegrationBadge name="Tiny"  status={st(tinyPedidos)} />
-        <IntegrationBadge name="Bling" status="error" />
+        <IntegrationBadge name="Bling" status="unknown" />
       </div>
 
       <div className="px-4 md:px-6 space-y-5 pb-8">
@@ -76,12 +74,13 @@ export default function FinanceiroPage() {
         <div className="flex items-start gap-3 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900 text-sm">
           <AlertTriangle size={15} className="text-amber-500 mt-0.5 shrink-0" />
           <p className="text-amber-800 dark:text-amber-300 text-xs leading-relaxed">
-            <strong>Bling não conectado.</strong> Acesse{" "}
-            <strong>Bling → Configurações → API → Tokens e Aplicativos</strong>{" "}
-            e gere um novo token OAuth2. O token antigo (API v2) não funciona no v3.
+            <strong>Saldos bancários e CNPJ ainda não verificados.</strong> Esta tela consulta Asaas e a primeira página do Tiny. Não é um caixa consolidado. As cobranças podem exceder a página recebida; confira a cobertura antes de usar os totais. Falha de consulta não significa saldo ou dívida zero.
           </p>
         </div>
 
+        <p className="text-xs text-muted-foreground">
+          Fonte: Asaas e Tiny. Cobranças: todos os vencimentos; pedidos: mês atual. Última consulta Asaas: {asaasRec.dataUpdatedAt ? new Date(asaasRec.dataUpdatedAt).toLocaleString('pt-BR') : 'não confirmada'}. {asaasRec.data && `Recebidos ${asaasRec.data.data.length} de ${asaasRec.data.totalCount} registros.`}
+        </p>
         {/* Saldos */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Saldos</p>
@@ -106,13 +105,15 @@ export default function FinanceiroPage() {
         {/* Posição do mês */}
         <section>
           <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Posição do mês — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
+            Consultas financeiras — {new Date().toLocaleDateString("pt-BR", { month: "long", year: "numeric" })}
           </p>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5">
             <SaldoCard label="A pagar (Bling)"        value={null} isError />
             <SaldoCard
               label="A receber (Asaas)"
-              value={asaasRec.isLoading ? null : totalReceber}
+              value={asaasRec.isError || !asaasRec.data ? null : totalReceber}
+              isError={asaasRec.isError}
+              source="Asaas · página consultada"
               isLoading={asaasRec.isLoading}
               variant="positive"
             />
@@ -121,12 +122,14 @@ export default function FinanceiroPage() {
               value={tinyPedidos.isLoading ? null : faturamentoB2B}
               isLoading={tinyPedidos.isLoading}
               isError={tinyPedidos.isError}
-              source="Tiny"
+              source="Tiny · primeira página"
               variant="positive"
             />
             <SaldoCard
               label="Cobranças vencidas"
-              value={asaasOverdue.isLoading ? null : totalVencido}
+              value={asaasOverdue.isError || !asaasOverdue.data ? null : totalVencido}
+              isError={asaasOverdue.isError}
+              source="Asaas · página consultada"
               isLoading={asaasOverdue.isLoading}
               variant={totalVencido > 0 ? "negative" : "positive"}
             />
@@ -140,6 +143,7 @@ export default function FinanceiroPage() {
             contas={contasReceber}
             tipo="receber"
             isLoading={asaasRec.isLoading}
+            isError={asaasRec.isError}
           />
 
           {/* Pedidos B2B do Tiny */}
@@ -150,11 +154,11 @@ export default function FinanceiroPage() {
                   <ShoppingBag size={13} className="text-muted-foreground" />
                   Pedidos B2B — Tiny
                 </p>
-                {!tinyPedidos.isLoading && (
+                {!tinyPedidos.isLoading && !tinyPedidos.isError && (
                   <p className="text-xs text-muted-foreground">{pedidosOk.length} aprovados no mês</p>
                 )}
               </div>
-              {!tinyPedidos.isLoading && (
+              {!tinyPedidos.isLoading && !tinyPedidos.isError && (
                 <span className="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">
                   {fmt(faturamentoB2B)}
                 </span>
@@ -168,6 +172,8 @@ export default function FinanceiroPage() {
                     <div className="h-3 bg-muted rounded w-20" />
                   </div>
                 ))
+              ) : tinyPedidos.isError ? (
+                <div role="alert" className="px-4 py-6 text-sm text-muted-foreground">Pedidos indisponíveis. Nenhum total foi confirmado.</div>
               ) : pedidosOk.length === 0 ? (
                 <div className="px-4 py-6 text-center text-sm text-muted-foreground">
                   Nenhum pedido aprovado no mês
@@ -188,7 +194,7 @@ export default function FinanceiroPage() {
         </div>
 
         {/* Cobranças vencidas */}
-        {!asaasOverdue.isLoading && (asaasOverdue.data?.data?.length ?? 0) > 0 && (
+        {!asaasOverdue.isLoading && !asaasOverdue.isError && (asaasOverdue.data?.data?.length ?? 0) > 0 && (
           <section>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-semibold text-red-500 uppercase tracking-wider">⚠ Cobranças vencidas</span>

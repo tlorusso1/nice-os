@@ -1,3 +1,5 @@
+import { fetchIntegration, sanitizeResponseBody } from "../_shared/sanitize-response.ts";
+import { requireAdmin } from "../_shared/require-admin.ts";
 /**
  * proxy-perfit — Supabase Edge Function
  * Injeta PERFIT_API_KEY e faz proxy para https://api.myperfit.com/v2/{account}
@@ -21,6 +23,9 @@ const CORS = {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  const authError = await requireAdmin(req, CORS);
+  if (authError) return authError;
+
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/proxy-perfit/, "").replace(/^\/functions\/v1\/proxy-perfit/, "") || "/";
   const targetUrl = `${TARGET}${path}${url.search}`;
@@ -30,15 +35,15 @@ serve(async (req: Request) => {
   headers.delete("host");
   headers.delete("apikey");
 
-  const res = await fetch(targetUrl, {
+  const res = await fetchIntegration(targetUrl, {
     method: req.method,
     headers,
     body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
   });
 
   const body = await res.text();
-  return new Response(body, {
+  return new Response([204, 205, 304].includes(res.status) ? null : sanitizeResponseBody(body, [PERFIT_KEY]), {
     status: res.status,
-    headers: { ...CORS, "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 });

@@ -1,3 +1,6 @@
+import { fetchIntegration, sanitizeResponseBody } from "../_shared/sanitize-response.ts";
+import { isBlingSyncRead } from "../_shared/authorization.ts";
+import { requireAdmin } from "../_shared/require-admin.ts";
 /**
  * proxy-bling — Supabase Edge Function
  * Proxy para https://api.bling.com.br/Api/v3 com refresh automático de token OAuth.
@@ -36,7 +39,7 @@ async function refreshToken(): Promise<string> {
   const refresh = (await cfgGet("bling_refresh_token")) || clean(Deno.env.get("BLING_REFRESH_TOKEN") ?? "");
   if (!refresh || !CLIENT_ID || !CLIENT_SECRET) return "";
 
-  const res = await fetch("https://api.bling.com.br/Api/v3/oauth/token", {
+  const res = await fetchIntegration("https://api.bling.com.br/Api/v3/oauth/token", {
     method: "POST",
     headers: {
       Authorization: `Basic ${btoa(`${CLIENT_ID}:${CLIENT_SECRET}`)}`,
@@ -46,7 +49,7 @@ async function refreshToken(): Promise<string> {
     body: new URLSearchParams({ grant_type: "refresh_token", refresh_token: refresh }),
   });
   if (!res.ok) {
-    console.error("Bling refresh falhou", res.status, (await res.text()).slice(0, 300));
+    console.error("Bling refresh falhou", { status: res.status });
     return "";
   }
   const json = await res.json();
@@ -62,13 +65,16 @@ async function currentToken(): Promise<string> {
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  const authError = await requireAdmin(req, CORS, { allowServiceRole: isBlingSyncRead(req) });
+  if (authError) return authError;
+
   const url = new URL(req.url);
   const path =
     url.pathname.replace(/^\/proxy-bling/, "").replace(/^\/functions\/v1\/proxy-bling/, "") || "/";
   const payload = ["GET", "HEAD"].includes(req.method) ? undefined : await req.text();
 
   const call = (token: string) =>
-    fetch(`${TARGET}${path}${url.search}`, {
+    fetchIntegration(`${TARGET}${path}${url.search}`, {
       method: req.method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -96,15 +102,14 @@ Deno.serve(async (req: Request) => {
         message:
           "Bling rejeitou o token e o refresh automático não funcionou. Configure BLING_CLIENT_ID, BLING_CLIENT_SECRET e BLING_REFRESH_TOKEN.",
         upstreamStatus: 401,
-        data: [],
       }),
-      { status: 200, headers: { ...CORS, "Content-Type": "application/json" } },
+      { status: 502, headers: { ...CORS, "Content-Type": "application/json" } },
     );
   }
 
   const body = await res.text();
-  return new Response(body, {
+  return new Response([204, 205, 304].includes(res.status) ? null : sanitizeResponseBody(body, [token, CLIENT_SECRET]), {
     status: res.status,
-    headers: { ...CORS, "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 });

@@ -17,6 +17,7 @@ interface ContasListProps {
   contas: Conta[];
   tipo: "pagar" | "receber";
   isLoading?: boolean;
+  isError?: boolean;
 }
 
 function getDateLabel(dateStr: string): { label: string; urgente: boolean } {
@@ -31,7 +32,7 @@ function getDateLabel(dateStr: string): { label: string; urgente: boolean } {
   }
 }
 
-export function ContasList({ title, contas, tipo, isLoading }: ContasListProps) {
+export function ContasList({ title, contas, tipo, isLoading, isError }: ContasListProps) {
   const total = contas.reduce((s, c) => s + c.valor, 0);
   const fmt = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
@@ -41,11 +42,11 @@ export function ContasList({ title, contas, tipo, isLoading }: ContasListProps) 
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <div>
           <p className="text-sm font-semibold">{title}</p>
-          {!isLoading && (
+          {!isLoading && !isError && (
             <p className="text-xs text-muted-foreground">{contas.length} lançamentos</p>
           )}
         </div>
-        {!isLoading && (
+        {!isLoading && !isError && (
           <span className={cn(
             "text-sm font-semibold tabular-nums",
             tipo === "receber" ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400"
@@ -65,6 +66,8 @@ export function ContasList({ title, contas, tipo, isLoading }: ContasListProps) 
               <div className="h-3 bg-muted rounded w-12" />
             </div>
           ))
+        ) : isError ? (
+          <div role="alert" className="px-4 py-6 text-sm text-muted-foreground">Consulta indisponível. Não é possível confirmar se há contas em aberto.</div>
         ) : contas.length === 0 ? (
           <div className="flex items-center gap-2 px-4 py-6 text-muted-foreground justify-center">
             <CheckCircle2 size={16} className="text-emerald-500" />

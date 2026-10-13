@@ -66,19 +66,8 @@ function uploadSingleFile(
   return new Promise((resolve, reject) => {
     const accountId = import.meta.env.VITE_META_AD_ACCOUNT_ID ?? "";
 
-    // Modo mock — quando sem token configurado
     if (!accountId || import.meta.env.VITE_META_ADS_CONFIGURED !== "true") {
-      let pct = 0;
-      const interval = setInterval(() => {
-        pct += 20;
-        onProgress(Math.min(pct, 90));
-        if (pct >= 90) clearInterval(interval);
-      }, 200);
-      setTimeout(() => {
-        clearInterval(interval);
-        onProgress(100);
-        resolve({ hash: `mock_hash_${Date.now()}`, url: URL.createObjectURL(file) });
-      }, 1200);
+      reject(new Error("Meta Ads: integração não configurada. Nenhum arquivo foi enviado."));
       return;
     }
 
@@ -98,7 +87,8 @@ function uploadSingleFile(
         try {
           const data = JSON.parse(xhr.responseText);
           const imgData = Object.values(data.images ?? {})[0] as Record<string, string>;
-          resolve({ hash: imgData?.hash ?? "", url: imgData?.url ?? "" });
+          if (!imgData?.hash) throw new Error("Upload sem confirmação da fonte");
+          resolve({ hash: imgData.hash, url: imgData.url ?? "" });
         } catch {
           reject(new Error("Resposta inválida do Meta"));
         }

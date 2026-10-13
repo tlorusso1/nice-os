@@ -1,11 +1,7 @@
+import { formatCompact as fmtK } from "../../lib/dataQuality";
 import { Youtube, Eye, Video, Users, ExternalLink } from "lucide-react";
 import type { YTChannelStats } from "../../hooks/useMarketingData";
 
-const fmtK = (v: number) => {
-  if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000)     return `${(v / 1_000).toFixed(1)}k`;
-  return String(v);
-};
 
 interface Props {
   stats: YTChannelStats;

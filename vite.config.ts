@@ -19,20 +19,12 @@ export default defineConfig(({ mode }) => {
   const nuvemshopToken   = env.NUVEMSHOP_TOKEN      ?? "";
   const nuvemshopStoreId = env.NUVEMSHOP_STORE_ID   ?? "";
 
-  console.log("[NICE BIRD] Asaas token loaded:   ", asaasToken    ? `${asaasToken.slice(0, 10)}…`    : "VAZIO ⚠");
-  console.log("[NICE BIRD] Tiny token loaded:    ", tinyToken     ? `${tinyToken.slice(0, 8)}…`     : "VAZIO ⚠");
-  console.log("[NICE BIRD] Meta token loaded:    ", metaToken     ? `${metaToken.slice(0, 8)}…`     : "VAZIO ⚠");
-  console.log("[NICE BIRD] YouTube API key:      ", youtubeApiKey ? `${youtubeApiKey.slice(0, 8)}…` : "não configurado (mock)");
-  console.log("[NICE BIRD] GA4 service account: ", ga4SaKeyJson  ? "configurado ✓"                 : "não configurado (mock)");
-  console.log("[NICE BIRD] Perfit API key:       ", perfitApiKey     ? `${perfitApiKey.slice(0, 6)}…`     : "não configurado (mock)");
-  console.log("[NICE BIRD] Nuvemshop token:      ", nuvemshopToken   ? `${nuvemshopToken.slice(0, 8)}…`   : "não configurado (mock)");
-  console.log("[NICE BIRD] Nuvemshop store ID:   ", nuvemshopStoreId ? nuvemshopStoreId                   : "não configurado (mock)");
 
   return {
     server: {
-      host: "::",
+      host: "127.0.0.1",
       port: 8080,
-      allowedHosts: true,
+      allowedHosts: ["localhost"],
       proxy: {
         // ── Asaas ──────────────────────────────────────────────
         "/api/asaas": {
@@ -44,10 +36,8 @@ export default defineConfig(({ mode }) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               proxyReq.setHeader("access_token", asaasToken);
               proxyReq.setHeader("User-Agent", "NiceBirdOS/1.0");
-              console.log(`[proxy → Asaas] ${req.method} ${req.url}`);
             });
             proxy.on("proxyRes", (proxyRes, req) => {
-              console.log(`[proxy ← Asaas] ${proxyRes.statusCode} ${req.url}`);
             });
           },
         },
@@ -62,10 +52,8 @@ export default defineConfig(({ mode }) => {
               const url = new URL(`https://graph.facebook.com${proxyReq.path}`);
               url.searchParams.set("access_token", metaToken);
               proxyReq.path = url.pathname + url.search;
-              console.log(`[proxy → Meta] ${req.method} ${req.url}`);
             });
             proxy.on("proxyRes", (proxyRes, req) => {
-              console.log(`[proxy ← Meta] ${proxyRes.statusCode} ${req.url}`);
             });
           },
         },
@@ -76,7 +64,10 @@ export default defineConfig(({ mode }) => {
           rewrite: (p) => p.replace(/^\/api\/tiny/, "/api2"),
           configure: (proxy) => {
             proxy.on("proxyReq", (proxyReq, req) => {
-              console.log(`[proxy → Tiny] ${req.method} ${req.url}`);
+              const url = new URL(`https://api.tiny.com.br${proxyReq.path}`);
+              url.searchParams.set("token", tinyToken);
+              url.searchParams.set("formato", "json");
+              proxyReq.path = url.pathname + url.search;
             });
           },
         },
@@ -122,7 +113,6 @@ export default defineConfig(({ mode }) => {
             proxy.on("proxyReq", (proxyReq, req) => {
               proxyReq.setHeader("Authentication", `bearer ${nuvemshopToken}`);
               proxyReq.setHeader("User-Agent", "NiceBirdOS/1.0 (thiago@nicefoods.com.br)");
-              console.log(`[proxy → Nuvemshop] ${req.method} ${req.url}`);
             });
           },
         },

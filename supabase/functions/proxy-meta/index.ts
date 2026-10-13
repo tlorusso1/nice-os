@@ -1,3 +1,5 @@
+import { fetchIntegration, sanitizeResponseBody } from "../_shared/sanitize-response.ts";
+import { requireAdmin } from "../_shared/require-admin.ts";
 /**
  * proxy-meta — Supabase Edge Function
  * Injeta META_ADS_TOKEN e faz proxy para https://graph.facebook.com
@@ -19,6 +21,9 @@ const CORS = {
 serve(async (req: Request) => {
   if (req.method === "OPTIONS") return new Response(null, { headers: CORS });
 
+  const authError = await requireAdmin(req, CORS);
+  if (authError) return authError;
+
   const url = new URL(req.url);
   const path = url.pathname.replace(/^\/proxy-meta/, "").replace(/^\/functions\/v1\/proxy-meta/, "") || "/";
 
@@ -31,15 +36,15 @@ serve(async (req: Request) => {
   headers.delete("authorization");
   headers.delete("apikey");
 
-  const res = await fetch(targetUrl, {
+  const res = await fetchIntegration(targetUrl, {
     method: req.method,
     headers,
     body: ["GET", "HEAD"].includes(req.method) ? undefined : await req.text(),
   });
 
   const body = await res.text();
-  return new Response(body, {
+  return new Response([204, 205, 304].includes(res.status) ? null : sanitizeResponseBody(body, [META_TOKEN]), {
     status: res.status,
-    headers: { ...CORS, "Content-Type": res.headers.get("Content-Type") ?? "application/json" },
+    headers: { ...CORS, "Content-Type": "application/json", "Cache-Control": "no-store" },
   });
 });

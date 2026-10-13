@@ -1,6 +1,7 @@
 import { useState, useMemo, Fragment } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { supabase } from '@/integrations/supabase/client'
+import { readAllSalesRows, requireSalesNumbers } from '../api/vendasCanais'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip,
   ResponsiveContainer, Legend, CartesianGrid
@@ -20,6 +21,9 @@ import { Package, Download, ChevronRight } from 'lucide-react'
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface VendasRow {
+  id: string
+  fonte: string | null
+  atualizado_em: string | null
   mes: string
   canal: string
   pedidos: number
@@ -27,6 +31,8 @@ interface VendasRow {
 }
 
 interface ProdutoRow {
+  id: string
+  atualizado_em: string | null
   mes: string
   canal: string
   nome: string
@@ -54,7 +60,7 @@ function startOfMonth(d: Date): Date {
 }
 
 function subMonths(d: Date, n: number): Date {
-  const r = new Date(d)
+  const r = startOfMonth(d)
   r.setMonth(r.getMonth() - n)
   return startOfMonth(r)
 }
@@ -71,7 +77,8 @@ function fmtMes(dateStr: string): string {
   return `${MONTHS[month - 1]}/${year.slice(2)}`
 }
 
-function fmtBRL(n: number): string {
+function fmtBRL(n: number | null): string {
+  if (n === null || !Number.isFinite(n)) return "—"
   return n.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL', minimumFractionDigits: 0 })
 }
 
@@ -85,32 +92,27 @@ function fmtDateTime(iso: string): string {
 
 function getPeriodRange(key: string): { start: string; end: string } {
   const now = new Date()
+  if (/^\d{4}$/.test(key)) return { start: `${key}-01-01`, end: `${key}-12-01` }
   switch (key) {
     case 'atual':
-      return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-01` }
+      return { start: `${now.getFullYear()}-01-01`, end: fmtIso(now) }
     case '6m':
       return { start: fmtIso(subMonths(now, 5)), end: fmtIso(now) }
     case '12m':
       return { start: fmtIso(subMonths(now, 11)), end: fmtIso(now) }
     case 'tudo':
       return { start: '2000-01-01', end: '2099-12-01' }
-    case '2023':
-    case '2024':
-    case '2025':
-      return { start: `${key}-01-01`, end: `${key}-12-01` }
     default:
-      return { start: `${now.getFullYear()}-01-01`, end: `${now.getFullYear()}-12-01` }
+      return { start: `${now.getFullYear()}-01-01`, end: fmtIso(now) }
   }
 }
 
 const PERIOD_OPTIONS = [
-  { key: '2023',  label: '2023' },
-  { key: '2024',  label: '2024' },
-  { key: '2025',  label: '2025' },
+  ...Array.from({ length: Math.max(0, new Date().getFullYear() - 2023) }, (_, i) => ({ key: String(2023 + i), label: String(2023 + i) })),
   { key: 'atual', label: 'Ano atual' },
-  { key: '6m',    label: 'Últimos 6m' },
-  { key: '12m',   label: 'Últimos 12m' },
-  { key: 'tudo',  label: 'Tudo' },
+  { key: '6m', label: 'Últimos 6m' },
+  { key: '12m', label: 'Últimos 12m' },
+  { key: 'tudo', label: 'Tudo' },
 ]
 
 // ─── Custom Tooltip ───────────────────────────────────────────────────────────
@@ -173,76 +175,64 @@ export default function VendasCanaisPage() {
 
   const { start, end } = getPeriodRange(period)
 
-  const { data: vendasData, isLoading: vendasLoading } = useQuery({
+  const vendas = useQuery({
     queryKey: ['vendas-canais', start, end],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vendas_canais')
-        .select('mes, canal, pedidos, faturamento')
-        .gte('mes', start)
-        .lte('mes', end)
-        .order('mes', { ascending: true })
-      if (error) throw error
-      return data as VendasRow[]
-    }
+    queryFn: async () => requireSalesNumbers(await readAllSalesRows<VendasRow>((from, to) => supabase
+      .from('vendas_canais')
+      .select('id, mes, canal, pedidos, faturamento, fonte, atualizado_em', { count: 'exact' })
+      .gte('mes', start).lte('mes', end)
+      .order('mes', { ascending: true }).order('id', { ascending: true }).range(from, to)), ['pedidos', 'faturamento']),
+    retry: 1,
   })
+  const vendasData = vendas.isError ? undefined : vendas.data
+  const vendasLoading = vendas.isLoading
 
-  const { data: lastUpdate } = useQuery({
-    queryKey: ['vendas-canais-last-update'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vendas_canais')
-        .select('atualizado_em')
-        .order('atualizado_em', { ascending: false })
-        .limit(1)
-      if (error) throw error
-      return (data?.[0] as { atualizado_em: string } | undefined)?.atualizado_em ?? null
-    }
-  })
-
-  const { data: produtosData, isLoading: produtosLoading } = useQuery({
+  const produtos = useQuery({
     queryKey: ['vendas-produtos', start, end, canal],
-    queryFn: async () => {
-      let q = supabase
-        .from('vendas_produtos')
-        .select('mes, canal, nome, sku, qtd_vendida, faturamento')
-        .eq('fonte', 'nf')
-        .gte('mes', start)
-        .lte('mes', end)
+    queryFn: async () => requireSalesNumbers(await readAllSalesRows<ProdutoRow>((from, to) => {
+      let q = supabase.from('vendas_produtos')
+        .select('id, mes, canal, nome, sku, qtd_vendida, faturamento, atualizado_em', { count: 'exact' })
+        .eq('fonte', 'nf').gte('mes', start).lte('mes', end)
+        .order('id', { ascending: true }).range(from, to)
       if (canal !== 'todos') q = q.eq('canal', canal)
-      const { data, error } = await q
-      if (error) throw error
-      return data as ProdutoRow[]
-    }
+      return q
+    }), ['qtd_vendida', 'faturamento']),
+    retry: 1,
   })
+  const produtosData = produtos.isError ? undefined : produtos.data
+  const produtosLoading = produtos.isLoading
 
-  const { data: drillProdutos, isLoading: drillLoading } = useQuery({
+  const drill = useQuery({
     queryKey: ['vendas-produtos-mes', expandedMes, canal],
     enabled: !!expandedMes,
-    queryFn: async () => {
-      let q = supabase
-        .from('vendas_produtos')
-        .select('nome, sku, canal, qtd_vendida, faturamento')
-        .eq('fonte', 'nf')
-        .eq('mes', expandedMes!)
+    queryFn: async () => requireSalesNumbers(await readAllSalesRows<ProdutoRow>((from, to) => {
+      let q = supabase.from('vendas_produtos')
+        .select('id, mes, nome, sku, canal, qtd_vendida, faturamento, atualizado_em', { count: 'exact' })
+        .eq('fonte', 'nf').eq('mes', expandedMes!)
+        .order('id', { ascending: true }).range(from, to)
       if (canal !== 'todos') q = q.eq('canal', canal)
-      const { data, error } = await q
-      if (error) throw error
-      return data as ProdutoRow[]
-    }
+      return q
+    }), ['qtd_vendida', 'faturamento']),
+    retry: 1,
   })
-
+  const drillProdutos = drill.isError ? undefined : drill.data
+  const drillLoading = drill.isLoading
 
   const canaisAtivos = useMemo(() => {
-    if (!vendasData) return CANAL_ORDER
+    if (!vendasData) return []
     const set = new Set(vendasData.map(r => r.canal))
-    return CANAL_ORDER.filter(c => set.has(c))
+    return [...CANAL_ORDER.filter(c => set.has(c)), ...[...set].filter(c => !CANAL_ORDER.includes(c)).sort()]
   }, [vendasData])
 
   const filteredVendas = useMemo(() => {
     if (!vendasData) return []
     return canal === 'todos' ? vendasData : vendasData.filter(r => r.canal === canal)
   }, [vendasData, canal])
+
+  const hasVendas = !vendas.isError && filteredVendas.length > 0
+  const sourceDates = filteredVendas.map(r => r.atualizado_em).filter((value): value is string => !!value && Number.isFinite(Date.parse(value))).sort()
+  const sourceNames = [...new Set(filteredVendas.map(r => r.fonte ?? 'não informada'))].join(', ')
+  const sourceDatesIncomplete = sourceDates.length < filteredVendas.length
 
   const canaisDisplay = canal === 'todos'
     ? canaisAtivos
@@ -293,40 +283,43 @@ export default function VendasCanaisPage() {
   const totaisTabela = useMemo(() => {
     const fat = tabelaMeses.reduce((s, r) => s + r.totalFat, 0)
     const ped = tabelaMeses.reduce((s, r) => s + r.totalPed, 0)
-    return { fat, ped, ticket: ped > 0 ? fat / ped : 0 }
+    return { fat, ped, ticket: ped > 0 ? fat / ped : null }
   }, [tabelaMeses])
 
   const produtosAgg = useMemo(() => {
     if (!produtosData) return []
     const map: Record<string, { nome: string; sku: string | null; qtd: number; fat: number }> = {}
     for (const r of produtosData) {
-      if (!map[r.nome]) map[r.nome] = { nome: r.nome, sku: r.sku, qtd: 0, fat: 0 }
-      map[r.nome].qtd += r.qtd_vendida
-      map[r.nome].fat += Number(r.faturamento)
+      const key = r.sku ? `sku:${r.sku}` : `nome:${r.nome}`
+      if (!map[key]) map[key] = { nome: r.nome, sku: r.sku, qtd: 0, fat: 0 }
+      map[key].qtd += r.qtd_vendida
+      map[key].fat += Number(r.faturamento)
     }
     return Object.values(map).sort((a, b) => b.fat - a.fat)
   }, [produtosData])
 
   const produtosTotal = produtosAgg.reduce((s, p) => s + p.fat, 0)
+  const productSourceDates = (produtosData ?? []).map(row => row.atualizado_em).filter((value): value is string => !!value && Number.isFinite(Date.parse(value))).sort()
 
   const handleExport = () => {
+    if (!hasVendas || vendas.isFetching) return
     const now = new Date()
     const stamp = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`
     if (tableView === 'somado') {
       const rows: string[][] = [['Mês', 'Pedidos', 'Faturamento', 'Ticket médio']]
       for (const r of tabelaMeses) {
-        const ticket = r.totalPed > 0 ? r.totalFat / r.totalPed : 0
-        rows.push([fmtMes(r.mes), String(r.totalPed), r.totalFat.toFixed(2), ticket.toFixed(2)])
+        const ticket = r.totalPed > 0 ? r.totalFat / r.totalPed : null
+        rows.push([fmtMes(r.mes), String(r.totalPed), r.totalFat.toFixed(2), ticket === null ? "" : ticket.toFixed(2)])
       }
       downloadCSV(rows, `vendas-canais-${stamp}.csv`)
     } else {
-      const rows: string[][] = [['Mês', ...canaisDisplay.map(c => CANAL_CONFIG[c].label), 'Total']]
+      const rows: string[][] = [['Mês', ...canaisDisplay.map(c => (CANAL_CONFIG[c]?.label ?? c)), 'Total']]
       for (const r of tabelaMeses) {
         rows.push([
           fmtMes(r.mes),
           ...canaisDisplay.map(c => {
             const d = r.canais[c]
-            if (!d) return '0'
+            if (!d) return ''
             return (metrica === 'faturamento' ? d.fat : d.ped).toFixed(2)
           }),
           (metrica === 'faturamento' ? r.totalFat : r.totalPed).toFixed(2),
@@ -344,11 +337,17 @@ export default function VendasCanaisPage() {
         <p className="text-muted-foreground text-sm mt-0.5">
           Faturamento e pedidos por canal de venda
         </p>
-        {lastUpdate && (
-          <p className="text-xs text-muted-foreground mt-1">
-            Última atualização: {fmtDateTime(lastUpdate)}
-          </p>
-        )}
+        <p className="text-xs text-muted-foreground mt-1">
+          Fonte: vendas_canais no Supabase; origens registradas: {sourceNames || 'indisponíveis'}.
+          Período: {period === 'tudo' ? 'todo o histórico disponível' : `${fmtMes(start)} a ${fmtMes(end)}`} (mês atual pode estar incompleto).
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Consultado: {vendas.dataUpdatedAt && !vendas.isError ? fmtDateTime(new Date(vendas.dataUpdatedAt).toISOString()) : 'indisponível'}.
+          Atualização dos registros selecionados: {sourceDates.length ? `${fmtDateTime(sourceDates[0])} a ${fmtDateTime(sourceDates[sourceDates.length - 1])}` : 'não informada'}{sourceDatesIncomplete ? '; há registros sem horário válido' : ''}.
+        </p>
+        <p className="text-xs text-muted-foreground mt-1">
+          Totais somam apenas registros disponíveis. Meses ou canais ausentes não significam venda zero; a consulta não comprova que a sincronização das fontes esteja completa.
+        </p>
       </div>
 
       {/* Controls */}
@@ -356,7 +355,7 @@ export default function VendasCanaisPage() {
         <ToggleGroup
           type="single"
           value={period}
-          onValueChange={(v) => v && setPeriod(v)}
+          onValueChange={(v) => { if (v) { setPeriod(v); setExpandedMes(null) } }}
           variant="outline"
           size="sm"
         >
@@ -367,14 +366,14 @@ export default function VendasCanaisPage() {
           ))}
         </ToggleGroup>
 
-        <Select value={canal} onValueChange={setCanal}>
+        <Select value={canal} onValueChange={(value) => { setCanal(value); setExpandedMes(null) }}>
           <SelectTrigger className="w-44 h-8 text-sm">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="todos">Todos os canais</SelectItem>
-            {CANAL_ORDER.map(c => (
-              <SelectItem key={c} value={c}>{CANAL_CONFIG[c].label}</SelectItem>
+            {[...new Set([...CANAL_ORDER, ...canaisAtivos])].map(c => (
+              <SelectItem key={c} value={c}>{(CANAL_CONFIG[c]?.label ?? c)}</SelectItem>
             ))}
           </SelectContent>
         </Select>
@@ -396,6 +395,9 @@ export default function VendasCanaisPage() {
         </div>
       </div>
 
+      {vendas.isError && <p role="alert" className="text-sm text-red-600">Falha ao consultar vendas. {vendas.error instanceof Error ? vendas.error.message : 'Tente novamente.'} Os indicadores estão indisponíveis.</p>}
+      <Button variant="outline" size="sm" disabled={vendas.isFetching || produtos.isFetching || drill.isFetching} onClick={() => { void vendas.refetch(); void produtos.refetch(); if (expandedMes) void drill.refetch() }}>Atualizar</Button>
+
       {/* KPI cards */}
       {vendasLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -412,17 +414,17 @@ export default function VendasCanaisPage() {
           <Card className="col-span-1">
             <CardContent className="pt-4 pb-3 px-4">
               <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-medium">
-                Total
+                Total registrado
               </p>
-              <p className="text-xl font-semibold mt-1 tabular-nums">{fmtBRL(kpis.total)}</p>
+              <p className="text-xl font-semibold mt-1 tabular-nums">{hasVendas ? fmtBRL(kpis.total) : "—"}</p>
               <p className="text-xs text-muted-foreground tabular-nums">
-                {kpis.totalPed.toLocaleString('pt-BR')} pedidos
+                {hasVendas ? `${kpis.totalPed.toLocaleString('pt-BR')} pedidos` : vendas.isError ? 'Consulta indisponível' : 'Sem registros no período/canal'}
               </p>
             </CardContent>
           </Card>
 
           {canaisDisplay.map(c => {
-            const cfg = CANAL_CONFIG[c]
+            const cfg = CANAL_CONFIG[c] ?? { label: c, color: "#64748B" }
             const d   = kpis.byCanal[c]
             if (!d) return null
             const pct = kpis.total > 0 ? ((d.fat / kpis.total) * 100).toFixed(0) : '0'
@@ -434,8 +436,8 @@ export default function VendasCanaisPage() {
                   </p>
                   <p className="text-lg font-semibold mt-1 tabular-nums">{fmtBRL(d.fat)}</p>
                   <p className="text-xs text-muted-foreground tabular-nums">
-                    {d.ped > 0 ? `${d.ped.toLocaleString('pt-BR')} ped.` : '—'}{' '}
-                    <span className="opacity-60">{pct}%</span>
+                    {`${d.ped.toLocaleString('pt-BR')} ped.`}{' '}
+                    <span className="opacity-60">{kpis.total > 0 ? `${pct}%` : "—"}</span>
                   </p>
                 </CardContent>
               </Card>
@@ -462,6 +464,8 @@ export default function VendasCanaisPage() {
             <CardContent className="pt-3">
               {vendasLoading ? (
                 <Skeleton className="h-[280px] w-full" />
+              ) : !hasVendas ? (
+                <p className="py-12 text-center text-sm text-muted-foreground">{vendas.isError ? "Gráfico indisponível por falha na consulta." : "Sem registros para este período e canal."}</p>
               ) : (
                 <ResponsiveContainer width="100%" height={280}>
                   <BarChart data={chartData} margin={{ left: 0, right: 8 }}>
@@ -494,7 +498,7 @@ export default function VendasCanaisPage() {
                         key={c}
                         dataKey={c}
                         stackId="a"
-                        fill={CANAL_CONFIG[c].color}
+                        fill={(CANAL_CONFIG[c]?.color ?? "#64748B")}
                         name={c}
                         radius={canaisDisplay.indexOf(c) === canaisDisplay.length - 1
                           ? [3, 3, 0, 0]
@@ -523,7 +527,7 @@ export default function VendasCanaisPage() {
                   <ToggleGroupItem value="somado" className="text-xs px-3">Somado</ToggleGroupItem>
                   <ToggleGroupItem value="canal" className="text-xs px-3">Por canal</ToggleGroupItem>
                 </ToggleGroup>
-                <Button variant="outline" size="sm" onClick={handleExport} className="h-8 text-xs gap-1.5">
+                <Button variant="outline" size="sm" onClick={handleExport} disabled={!hasVendas || vendas.isFetching} className="h-8 text-xs gap-1.5">
                   <Download size={13} />
                   Exportar CSV
                 </Button>
@@ -556,25 +560,26 @@ export default function VendasCanaisPage() {
                               <th
                                 key={c}
                                 className="text-right py-2.5 px-3 font-medium text-xs uppercase tracking-wide"
-                                style={{ color: CANAL_CONFIG[c].color }}
+                                style={{ color: (CANAL_CONFIG[c]?.color ?? "#64748B") }}
                               >
                                 <span className="inline-flex items-center gap-1.5 justify-end">
-                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: CANAL_CONFIG[c].color }} />
-                                  {CANAL_CONFIG[c].label}
+                                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: (CANAL_CONFIG[c]?.color ?? "#64748B") }} />
+                                  {(CANAL_CONFIG[c]?.label ?? c)}
                                 </span>
                               </th>
                             ))}
                             <th className="text-right py-2.5 px-4 font-medium text-xs uppercase tracking-wide text-muted-foreground">
-                              Total
+                              Total registrado
                             </th>
                           </>
                         )}
                       </tr>
                     </thead>
                     <tbody>
+                      {!hasVendas && <tr><td colSpan={tableView === "somado" ? 4 : canaisDisplay.length + 2} className="p-8 text-center text-muted-foreground">{vendas.isError ? "Dados indisponíveis por falha na consulta." : "Sem registros para este período e canal."}</td></tr>}
                       {tabelaMeses.map(({ mes, canais, totalFat, totalPed }) => {
                         const expanded = expandedMes === mes
-                        const ticket = totalPed > 0 ? totalFat / totalPed : 0
+                        const ticket = totalPed > 0 ? totalFat / totalPed : null
                         const colSpan = tableView === 'somado' ? 4 : canaisDisplay.length + 2
                         return (
                           <Fragment key={mes}>
@@ -628,6 +633,8 @@ export default function VendasCanaisPage() {
                                         <Skeleton key={i} className="h-6 w-full" />
                                       ))}
                                     </div>
+                                  ) : drill.isError ? (
+                                    <p role="alert" className="p-4 text-xs text-red-600">Não foi possível carregar os produtos deste mês. Tente atualizar.</p>
                                   ) : !drillProdutos || drillProdutos.length === 0 ? (
                                     <div className="p-4 text-xs text-muted-foreground text-center">
                                       Sem dados de produto para este mês.
@@ -691,13 +698,14 @@ export default function VendasCanaisPage() {
                 Produtos mais vendidos
                 {canal !== 'todos' && (
                   <Badge variant="secondary" className="text-xs">
-                    {CANAL_CONFIG[canal]?.label}
+                    {CANAL_CONFIG[canal]?.label ?? canal}
                   </Badge>
                 )}
               </CardTitle>
               <p className="text-xs text-muted-foreground">
-                Baseado em saída de estoque (nota fiscal — Tiny/Bling). Kits/PACKs são explodidos nos SKUs que realmente saíram.
+                Fonte: vendas_produtos no Supabase, registros marcados como NF. Quantidades e valores conforme a importação; não comprovam movimentação física ou explosão de kits.
               </p>
+              <p className="text-xs text-muted-foreground">Consultado: {produtos.dataUpdatedAt && !produtos.isError ? fmtDateTime(new Date(produtos.dataUpdatedAt).toISOString()) : 'indisponível'}. Período e canal conforme os filtros acima. Atualização dos registros: {productSourceDates.length ? `${fmtDateTime(productSourceDates[0])} a ${fmtDateTime(productSourceDates[productSourceDates.length - 1])}` : 'não informada'}{productSourceDates.length < (produtosData?.length ?? 0) ? '; há registros sem horário válido' : ''}.</p>
             </CardHeader>
 
             <CardContent className="p-0">
@@ -707,12 +715,14 @@ export default function VendasCanaisPage() {
                     <Skeleton key={i} className="h-9 w-full" />
                   ))}
                 </div>
+              ) : produtos.isError ? (
+                <p role="alert" className="p-8 text-sm text-red-600">Produtos indisponíveis. {produtos.error instanceof Error ? produtos.error.message : "Falha na consulta; tente atualizar."}</p>
               ) : produtosAgg.length === 0 ? (
                 <div className="h-48 flex flex-col items-center justify-center text-muted-foreground gap-2 px-6 text-center">
                   <Package size={28} className="opacity-30" />
-                  <p className="font-medium">Sincronização de produtos pendente</p>
+                  <p className="font-medium">Sem registros de produto neste período/canal</p>
                   <p className="text-xs text-balance leading-relaxed">
-                    Os dados de produto serão preenchidos quando o backfill for executado.
+                    A consulta não encontrou registros. Isso não confirma ausência de vendas nem a situação da sincronização.
                   </p>
                 </div>
               ) : (
@@ -729,9 +739,9 @@ export default function VendasCanaisPage() {
                     </thead>
                     <tbody>
                       {produtosAgg.map((p, i) => {
-                        const pct = produtosTotal > 0 ? (p.fat / produtosTotal) * 100 : 0
+                        const pct = produtosTotal > 0 ? (p.fat / produtosTotal) * 100 : null
                         return (
-                          <tr key={p.nome} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                          <tr key={p.sku ? `sku:${p.sku}` : `nome:${p.nome}`} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
                             <td className="py-2.5 px-4 text-muted-foreground text-xs font-mono">{i + 1}</td>
                             <td className="py-2.5 px-3">
                               <div className="font-medium leading-tight">{p.nome}</div>
@@ -746,11 +756,11 @@ export default function VendasCanaisPage() {
                                 <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden flex-shrink-0">
                                   <div
                                     className="h-full rounded-full bg-primary transition-all"
-                                    style={{ width: `${Math.min(pct, 100)}%` }}
+                                    style={{ width: `${pct === null ? 0 : Math.min(pct, 100)}%` }}
                                   />
                                 </div>
                                 <span className="text-xs tabular-nums w-9 text-right text-muted-foreground">
-                                  {pct.toFixed(1)}%
+                                  {pct === null ? "—" : `${pct.toFixed(1)}%`}
                                 </span>
                               </div>
                             </td>

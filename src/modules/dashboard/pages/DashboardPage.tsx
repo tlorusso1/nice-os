@@ -1,390 +1,132 @@
-import { useState } from "react";
-import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
-import { TrendingUp, TrendingDown, Minus, RefreshCw, AlertTriangle, ArrowRight } from "lucide-react";
-import { useQueryClient } from "@tanstack/react-query";
-import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
-import {
-  useAsaasBalance,
-  useAsaasReceivables,
-  useAsaasOverdue,
-  useTinyPedidosMes,
-} from "@/modules/financeiro/hooks/useFinanceiroData";
-import { getBlingContasPagar } from "@/modules/financeiro/api/bling";
-import { useNavigate } from "react-router-dom";
-import { cn } from "@/lib/utils";
+import { useState, type ReactNode } from 'react';
+import { toast } from 'sonner';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { RefreshCw, AlertTriangle, ArrowRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Skeleton } from '@/components/ui/skeleton';
+import { supabase } from '@/integrations/supabase/client';
+import { useAsaasBalance, useAsaasReceivables, useAsaasOverdue, useTinyPedidosMes } from '@/modules/financeiro/hooks/useFinanceiroData';
+import { getBlingContasPagar } from '@/modules/financeiro/api/bling';
+import { useNavigate } from 'react-router-dom';
+import { monthKey, percentageChange, sumKnown, syncFailedSources } from '@/lib/dataIntegrity';
 
-// ── helpers ─────────────────────────────────────────────────────────────────
+const fmt = (value: number | null) => value === null ? 'Indisponível' : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+const dateTime = (value: number | string) => value ? new Date(value).toLocaleString('pt-BR') : 'não confirmada';
+const nameMonth = (month: string) => new Date(`${month}-01T12:00:00`).toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+const CHANNELS: Record<string, string> = { nuvemshop: 'Nuvemshop', shopee: 'Shopee', ritz_pay: 'Ritz Pay', nice_sp: 'Nice SP', b2b: 'B2B', b2b_tiny: 'B2B (legado)' };
+const APPROVED = ['aprovado', 'preparando envio', 'pronto para envio', 'faturado', 'enviado', 'entregue'];
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-
-function mesPt(offset = 0) {
-  const d = new Date();
-  d.setMonth(d.getMonth() + offset);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+type QueryState = { isLoading: boolean; isError: boolean; dataUpdatedAt: number };
+function Provenance({ source, period, query, note }: { source: string; period: string; query: QueryState; note?: string }) {
+  return <div className="text-xs text-muted-foreground space-y-0.5 mt-2">
+    <p>Fonte: {source}</p><p>Período: {period}</p>
+    <p>{query.isError ? 'Consulta falhou; valor não confirmado' : `Consulta: ${dateTime(query.dataUpdatedAt)}`}</p>
+    {note && <p>{note}</p>}
+  </div>;
 }
-
-function nomeMes(yyyymm: string) {
-  const [y, m] = yyyymm.split("-");
-  return new Date(Number(y), Number(m) - 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+function Card({ title, value, query, children }: { title: string; value: number | null; query: QueryState; children?: ReactNode }) {
+  return <div className="rounded-xl border p-4 bg-card">
+    <h2 className="text-xs text-muted-foreground font-medium uppercase">{title}</h2>
+    {query.isLoading ? <Skeleton className="h-7 w-32 mt-2" /> : <p className="text-xl font-bold tabular-nums mt-1">{fmt(query.isError ? null : value)}</p>}
+    {children}
+  </div>;
 }
-
-function diasRestantes(dueDate: string) {
-  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
-  const due  = new Date(dueDate + "T00:00:00");
-  return Math.ceil((due.getTime() - hoje.getTime()) / 86400000);
+function EmptyOrError({ error, empty }: { error: boolean; empty: string }) {
+  return <p role={error ? 'alert' : undefined} className="text-sm text-muted-foreground py-4">{error ? 'Consulta indisponível. Não é possível confirmar os lançamentos.' : empty}</p>;
 }
-
-// ── canal config ────────────────────────────────────────────────────────────
-
-const CANAL_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  nuvemshop: { label: "Nuvemshop", color: "#2B7FFF", bg: "#EFF6FF" },
-  shopee:    { label: "Shopee",    color: "#FF6B00", bg: "#FFF7ED" },
-  ritz_pay:  { label: "Ritz Pay",  color: "#E8A838", bg: "#FFFBEB" },
-  nice_sp:   { label: "Nice SP",   color: "#4DC98A", bg: "#F0FDF4" },
-  b2b_tiny:  { label: "B2B",       color: "#7C3AED", bg: "#F5F3FF" },
-};
-
-// ── sub-components ───────────────────────────────────────────────────────────
-
-function KpiCard({
-  label, value, sub, loading, alert = false,
-}: { label: string; value: string; sub?: React.ReactNode; loading?: boolean; alert?: boolean }) {
-  return (
-    <div className={cn(
-      "rounded-xl border p-4 flex flex-col gap-1",
-      alert ? "border-red-200 bg-red-50 dark:bg-red-950/20 dark:border-red-900" : "bg-card"
-    )}>
-      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">{label}</p>
-      {loading ? (
-        <Skeleton className="h-7 w-32 mt-1" />
-      ) : (
-        <p className={cn("text-2xl font-bold tabular-nums", alert && "text-red-600 dark:text-red-400")}>{value}</p>
-      )}
-      {sub && <div className="text-xs text-muted-foreground mt-0.5">{sub}</div>}
-    </div>
-  );
-}
-
-function Delta({ pct }: { pct: number }) {
-  if (pct === 0) return <span className="flex items-center gap-0.5 text-muted-foreground"><Minus size={11} />0%</span>;
-  const up = pct > 0;
-  return (
-    <span className={cn("flex items-center gap-0.5 font-semibold", up ? "text-emerald-600" : "text-red-500")}>
-      {up ? <TrendingUp size={11} /> : <TrendingDown size={11} />}
-      {up ? "+" : ""}{pct.toFixed(1)}%
-    </span>
-  );
-}
-
-function CanalCard({
-  canal, atual, anterior, loading,
-}: { canal: string; atual: number; anterior: number; loading: boolean }) {
-  const cfg = CANAL_CONFIG[canal] ?? { label: canal, color: "#888", bg: "#F5F5F5" };
-  const pct = anterior > 0 ? ((atual - anterior) / anterior) * 100 : atual > 0 ? 100 : 0;
-
-  return (
-    <div className="rounded-xl border p-4 flex flex-col gap-2">
-      <div className="flex items-center gap-2">
-        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cfg.color }} />
-        <span className="text-xs font-medium text-muted-foreground">{cfg.label}</span>
-      </div>
-      {loading ? (
-        <Skeleton className="h-6 w-24" />
-      ) : (
-        <>
-          <p className="text-xl font-bold tabular-nums">{fmt(atual)}</p>
-          <Delta pct={pct} />
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── main page ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const [syncing, setSyncing] = useState(false);
+  const currentMonth = monthKey();
+  const previousMonth = monthKey(-1);
+  const sales = useQuery({
+    queryKey: ['vendas_canais', 'dashboard', currentMonth, previousMonth],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('vendas_canais').select('mes, canal, faturamento, fonte, updated_at').in('mes', [`${currentMonth}-01`, `${previousMonth}-01`]);
+      if (error) throw error;
+      return data ?? [];
+    }, staleTime: 300_000, retry: 1,
+  });
+  const balance = useAsaasBalance();
+  const receivables = useAsaasReceivables();
+  const overdue = useAsaasOverdue();
+  const tiny = useTinyPedidosMes();
+  const payable = useQuery({ queryKey: ['bling', 'contas-pagar', 'dashboard'], queryFn: getBlingContasPagar, staleTime: 300_000, retry: 1 });
 
-  const sincronizar = async () => {
+  const synchronize = async () => {
+    if (syncing) return;
     setSyncing(true);
     try {
-      await supabase.functions.invoke("sync-vendas", { body: { mode: "month" } });
-      await qc.invalidateQueries();
-      toast.success("Vendas sincronizadas");
-    } catch {
-      toast.error("Falha ao sincronizar vendas");
-    } finally {
-      setSyncing(false);
-    }
+      const { data, error } = await supabase.functions.invoke('sync-vendas', { body: { mode: 'month' } });
+      if (error) throw error;
+      const failed = syncFailedSources(data);
+      await qc.invalidateQueries({ queryKey: ['vendas_canais'] });
+      if (failed.length) toast.warning(`Sincronização incompleta: ${failed.join(', ')}. Confira as fontes antes de usar os totais.`);
+      else toast.success('Vendas sincronizadas nas fontes consultadas');
+    } catch { toast.error('Falha ao sincronizar vendas. Nenhum sucesso foi confirmado.'); }
+    finally { setSyncing(false); }
   };
 
+  const currentRows = (sales.data ?? []).filter(row => row.mes.slice(0, 7) === currentMonth);
+  const previousRows = (sales.data ?? []).filter(row => row.mes.slice(0, 7) === previousMonth);
+  const total = currentRows.length ? sumKnown(currentRows.map(row => row.faturamento)) : null;
+  const previous = previousRows.length ? sumKnown(previousRows.map(row => row.faturamento)) : null;
+  const delta = percentageChange(total, previous);
+  const channels = [...new Set([...Object.keys(CHANNELS).filter(key => key !== 'b2b_tiny'), ...currentRows.map(row => row.canal), ...previousRows.map(row => row.canal)])];
+  const approved = (tiny.data ?? []).filter(order => APPROVED.includes(order.situacao?.toLowerCase() ?? ''));
+  const overdueRows = overdue.isError ? [] : [...(overdue.data?.data ?? [])].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+  const payableRows = payable.isError ? [] : [...(payable.data?.data ?? [])].sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  const sampleNote = (data?: { data: unknown[]; totalCount: number }) => data && data.totalCount > data.data.length ? `Parcial: ${data.data.length} de ${data.totalCount} cobranças; total abaixo cobre só a página recebida.` : 'Cobranças retornadas pela integração.';
 
-  const mesAtual    = mesPt(0);
-  const mesAnterior = mesPt(-1);
-
-  // Faturamento por canal (mês atual + anterior)
-  const { data: vendasData, isLoading: vendasLoading } = useQuery({
-    queryKey: ["vendas_canais", "dashboard", mesAtual, mesAnterior],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from("vendas_canais")
-        .select("mes, canal, faturamento")
-        .in("mes", [`${mesAtual}-01`, `${mesAnterior}-01`]);
-      return data ?? [];
-    },
-    staleTime: 1000 * 60 * 5,
-  });
-
-  // Financeiro
-  const balanceQ  = useAsaasBalance();
-  const recQ      = useAsaasReceivables();
-  const overdueQ  = useAsaasOverdue();
-  const tinyQ     = useTinyPedidosMes();
-
-  const { data: pagarData, isLoading: pagarLoading } = useQuery({
-    queryKey: ["bling", "contas-pagar", "dashboard"],
-    queryFn: getBlingContasPagar,
-    staleTime: 1000 * 60 * 5,
-    retry: 1,
-  });
-
-  // ── Deriva os valores ─────────────────────────────────────────────────────
-
-  const atual:    Record<string, number> = {};
-  const anterior: Record<string, number> = {};
-  (vendasData ?? []).forEach((r: any) => {
-    const mesKey = typeof r.mes === "string" ? r.mes.slice(0, 7) : "";
-    const val = Number(r.faturamento) || 0;
-    if (mesKey === mesAtual)    atual[r.canal]    = (atual[r.canal]    ?? 0) + val;
-    if (mesKey === mesAnterior) anterior[r.canal] = (anterior[r.canal] ?? 0) + val;
-  });
-
-  const totalAtual    = Object.values(atual).reduce((s, v) => s + v, 0);
-  const totalAnterior = Object.values(anterior).reduce((s, v) => s + v, 0);
-  const varTotal      = totalAnterior > 0 ? ((totalAtual - totalAnterior) / totalAnterior) * 100 : 0;
-
-  const saldoAsaas  = balanceQ.data?.balance ?? 0;
-  const totalReceber = (recQ.data?.data ?? []).reduce((s, c) => s + c.value, 0);
-  const totalVencido = (overdueQ.data?.data ?? []).reduce((s, c) => s + c.value, 0);
-  const totalPagar   = (pagarData?.data ?? []).reduce((s, c) => s + c.valor, 0);
-
-  const situacoesOk  = ["aprovado", "pronto para envio", "enviado", "entregue"];
-  const fatB2B       = (tinyQ.data ?? [])
-    .filter((p) => situacoesOk.includes(p.situacao?.toLowerCase() ?? ""))
-    .reduce((s, p) => s + (p.valor ?? 0), 0);
-
-  const overdueList = (overdueQ.data?.data ?? [])
-    .sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())
-    .slice(0, 6);
-
-  const pagarList = (pagarData?.data ?? [])
-    .sort((a, b) => new Date(a.vencimento).getTime() - new Date(b.vencimento).getTime())
-    .slice(0, 6);
-
-  const canais = Object.keys(CANAL_CONFIG);
-
-  const hoje = new Date().toLocaleDateString("pt-BR", {
-    weekday: "long", day: "numeric", month: "long",
-  });
-
-  return (
-    <div className="flex flex-col animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between px-4 pt-4 pb-3 md:px-6 md:pt-6">
-        <div>
-          <h1 className="text-lg font-semibold">Visão Geral</h1>
-          <p className="text-xs text-muted-foreground capitalize">{hoje}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={sincronizar} disabled={syncing} className="gap-1.5">
-            <RefreshCw size={13} className={syncing ? "animate-spin" : undefined} />
-            Sincronizar vendas
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries()} className="gap-1.5">
-            <RefreshCw size={13} />
-            Atualizar
-          </Button>
-        </div>
-
-      </div>
-
-      <div className="px-4 md:px-6 space-y-5 pb-10">
-
-        {/* KPI row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <KpiCard
-            label="Faturamento"
-            value={fmt(totalAtual)}
-            loading={vendasLoading}
-            sub={<Delta pct={varTotal} />}
-          />
-          <KpiCard
-            label="Saldo Asaas"
-            value={fmt(saldoAsaas)}
-            loading={balanceQ.isLoading}
-          />
-          <KpiCard
-            label="A Receber"
-            value={fmt(totalReceber)}
-            loading={recQ.isLoading}
-            sub={`${(recQ.data?.data ?? []).length} cobranças pendentes`}
-          />
-          <KpiCard
-            label="Cobranças Vencidas"
-            value={fmt(totalVencido)}
-            loading={overdueQ.isLoading}
-            alert={totalVencido > 0}
-            sub={`${overdueList.length} em atraso`}
-          />
-        </div>
-
-        {/* Faturamento por canal */}
-        <div>
-          <div className="flex items-center justify-between mb-2">
-            <h2 className="text-sm font-semibold">
-              Faturamento por Canal — {nomeMes(mesAtual)}
-            </h2>
-            <button
-              onClick={() => navigate("/canais")}
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
-              Ver detalhes <ArrowRight size={11} />
-            </button>
-          </div>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-            {canais.map((c) => (
-              <CanalCard
-                key={c}
-                canal={c}
-                atual={atual[c] ?? 0}
-                anterior={anterior[c] ?? 0}
-                loading={vendasLoading}
-              />
-            ))}
-          </div>
-        </div>
-
-        {/* A Pagar + Vencidas */}
-        <div className="grid md:grid-cols-2 gap-4">
-
-          {/* Cobranças Vencidas */}
-          <div className="rounded-xl border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold flex items-center gap-1.5">
-                <AlertTriangle size={13} className="text-red-500" />
-                Cobranças Vencidas
-              </h2>
-              <button
-                onClick={() => navigate("/financeiro")}
-                className="text-xs text-muted-foreground hover:text-foreground flex items-center gap-1"
-              >
-                Ver todas <ArrowRight size={11} />
-              </button>
-            </div>
-            {overdueQ.isLoading ? (
-              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-            ) : overdueList.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma cobrança vencida</p>
-            ) : (
-              <div className="space-y-1.5">
-                {overdueList.map((c) => {
-                  const dias = diasRestantes(c.dueDate);
-                  return (
-                    <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate max-w-[180px]">
-                          {c.description || "Cobrança"}
-                        </p>
-                        <p className="text-xs text-red-500">{Math.abs(dias)} dias em atraso</p>
-                      </div>
-                      <p className="text-sm font-semibold text-red-600 tabular-nums shrink-0 ml-2">
-                        {fmt(c.value)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* A Pagar (Bling) */}
-          <div className="rounded-xl border p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-sm font-semibold">A Pagar</h2>
-              <span className="text-xs font-semibold text-muted-foreground tabular-nums">
-                {pagarLoading ? "—" : fmt(totalPagar)}
-              </span>
-            </div>
-            {pagarLoading ? (
-              <div className="space-y-2">{Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}</div>
-            ) : pagarList.length === 0 ? (
-              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma conta a pagar</p>
-            ) : (
-              <div className="space-y-1.5">
-                {pagarList.map((c) => {
-                  const dias = diasRestantes(c.vencimento);
-                  const vencida = dias < 0;
-                  const urgente = dias >= 0 && dias <= 3;
-                  return (
-                    <div key={c.id} className="flex items-center justify-between py-1.5 border-b border-border/50 last:border-0">
-                      <div className="min-w-0">
-                        <p className="text-xs font-medium truncate max-w-[180px]">
-                          {c.fornecedor?.nome ?? c.historico ?? "Fornecedor"}
-                        </p>
-                        <p className={cn(
-                          "text-xs",
-                          vencida ? "text-red-500" : urgente ? "text-amber-500" : "text-muted-foreground"
-                        )}>
-                          {vencida
-                            ? `${Math.abs(dias)}d em atraso`
-                            : dias === 0 ? "Vence hoje"
-                            : `em ${dias}d`}
-                        </p>
-                      </div>
-                      <p className={cn(
-                        "text-sm font-semibold tabular-nums shrink-0 ml-2",
-                        vencida ? "text-red-600" : urgente ? "text-amber-600" : ""
-                      )}>
-                        {fmt(c.valor)}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* B2B resumo */}
-        <div className="rounded-xl border p-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">B2B — Faturamento do Mês</p>
-            {tinyQ.isLoading ? (
-              <Skeleton className="h-7 w-32 mt-1" />
-            ) : (
-              <p className="text-2xl font-bold tabular-nums mt-0.5" style={{ color: "#7C3AED" }}>
-                {fmt(fatB2B)}
-              </p>
-            )}
-            <p className="text-xs text-muted-foreground mt-0.5">
-              {(tinyQ.data ?? []).filter(p => situacoesOk.includes(p.situacao?.toLowerCase() ?? "")).length} pedidos aprovados
-            </p>
-          </div>
-          <button
-            onClick={() => navigate("/b2b")}
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            Ver B2B <ArrowRight size={11} />
-          </button>
-        </div>
-
+  return <div className="animate-fade-in px-4 md:px-6 pt-4 md:pt-6 pb-10 space-y-5">
+    <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div><h1 className="text-lg font-semibold">Visão Geral</h1><p className="text-xs text-muted-foreground">{nameMonth(currentMonth)} · mês em andamento</p></div>
+      <div className="flex gap-2 flex-wrap">
+        <Button variant="outline" size="sm" onClick={synchronize} disabled={syncing}><RefreshCw size={13} className={syncing ? 'animate-spin mr-1' : 'mr-1'} />Sincronizar vendas</Button>
+        <Button variant="outline" size="sm" onClick={() => qc.invalidateQueries()}><RefreshCw size={13} className="mr-1" />Atualizar</Button>
       </div>
     </div>
-  );
+    <div role="note" className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/20 p-3 text-sm">
+      <AlertTriangle size={15} className="inline mr-2" />CNPJ não identificado pelas integrações atuais. Estes números não formam um caixa consolidado nem uma conciliação por empresa. Ausência de registro ou falha de conexão não significa zero.
+    </div>
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+      <Card title="Faturamento registrado" value={total} query={sales}>
+        <Provenance source="vendas_canais (registros sincronizados/importados)" period={nameMonth(currentMonth)} query={sales} note="Cobertura e conciliação entre fontes ainda não verificadas." />
+        <p className="text-xs mt-2">{delta === null || sales.isError ? 'Sem base válida para variação percentual' : `${delta > 0 ? '+' : ''}${delta.toFixed(1)}% versus mês anterior completo`}</p>
+      </Card>
+      <Card title="Saldo disponível Asaas" value={balance.data?.balance ?? null} query={balance}><Provenance source="Asaas" period="posição consultada, sem outros bancos" query={balance} /></Card>
+      <Card title="A receber · página consultada" value={receivables.data ? sumKnown(receivables.data.data.map(row => row.value)) : null} query={receivables}><Provenance source="Asaas" period="pendentes e vencidas, sem filtro mensal" query={receivables} note={sampleNote(receivables.data)} /></Card>
+      <Card title="Vencidas · página consultada" value={overdue.data ? sumKnown(overdue.data.data.map(row => row.value)) : null} query={overdue}><Provenance source="Asaas" period="cobranças vencidas, sem filtro mensal" query={overdue} note={sampleNote(overdue.data)} /></Card>
+    </div>
+    <section>
+      <div className="flex justify-between mb-2"><h2 className="text-sm font-semibold">Faturamento por canal</h2><Button variant="ghost" size="sm" onClick={() => navigate('/canais')}>Ver detalhes <ArrowRight size={12} /></Button></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">{channels.map(channel => {
+        const rows = currentRows.filter(row => row.canal === channel);
+        const sources = [...new Set(rows.map(row => row.fonte || 'origem não informada'))].join(', ');
+        const latest = rows.reduce((value, row) => row.updated_at > value ? row.updated_at : value, '');
+        return <Card key={channel} title={CHANNELS[channel] ?? channel} value={rows.length ? sumKnown(rows.map(row => row.faturamento)) : null} query={sales}>
+          <Provenance source={sources || 'sem registro no período'} period={nameMonth(currentMonth)} query={sales} note={latest ? `Registro atualizado em ${dateTime(latest)}; data de sincronização não garante conciliação.` : 'Cobertura não confirmada.'} />
+        </Card>;
+      })}</div>
+    </section>
+    <div className="grid md:grid-cols-2 gap-4">
+      <section className="rounded-xl border p-4"><h2 className="text-sm font-semibold">Cobranças vencidas · Asaas</h2>
+        <Provenance source="Asaas" period="vencidas, sem filtro mensal" query={overdue} note={sampleNote(overdue.data)} />
+        {overdue.isLoading ? <Skeleton className="h-20 mt-3" /> : overdue.isError || !overdueRows.length ? <EmptyOrError error={overdue.isError} empty="A consulta retornou zero cobranças vencidas." /> : overdueRows.slice(0, 6).map(row => <div key={row.id} className="flex justify-between gap-2 border-b py-2 text-sm"><span className="min-w-0 truncate">{row.description || 'Cobrança'}<small className="block text-muted-foreground">Vencimento: {row.dueDate}</small></span><span>{fmt(row.value)}</span></div>)}
+        {!overdue.isError && overdueRows.length > 0 && <p className="text-xs mt-2">Mostrando {Math.min(6, overdueRows.length)} de {overdueRows.length} registros recebidos.</p>}
+      </section>
+      <section className="rounded-xl border p-4"><h2 className="text-sm font-semibold">A pagar · Bling · primeira página</h2>
+        <p className="font-semibold mt-2">{payable.isLoading ? 'Carregando…' : fmt(payable.isError || !payable.data ? null : sumKnown(payable.data.data.map(row => row.valor)))}</p>
+        <Provenance source="Bling" period="contas em aberto, todos os vencimentos" query={payable} note="Até 100 registros; total parcial enquanto a paginação não for conciliada." />
+        {payable.isLoading ? <Skeleton className="h-20 mt-3" /> : payable.isError || !payableRows.length ? <EmptyOrError error={payable.isError} empty="A consulta retornou zero contas em aberto." /> : payableRows.slice(0, 6).map(row => <div key={row.id} className="flex justify-between gap-2 border-b py-2 text-sm"><span className="min-w-0 truncate">{row.fornecedor?.nome || row.historico || 'Fornecedor'}<small className="block text-muted-foreground">Vencimento: {row.vencimento}</small></span><span>{fmt(row.valor)}</span></div>)}
+      </section>
+    </div>
+    <Card title="B2B · pedidos aprovados consultados" value={tiny.data ? sumKnown(approved.map(order => order.valor)) : null} query={tiny}>
+      <Provenance source="Tiny" period={nameMonth(currentMonth)} query={tiny} note="Primeira página de pedidos; não somar novamente ao faturamento por canal. Pedido aprovado não é saldo recebido." />
+      {!tiny.isError && tiny.data && <p className="text-xs mt-2">{approved.length} pedidos aprovados na página recebida</p>}
+    </Card>
+    <div className="rounded-xl border p-4 text-sm space-y-2"><h2 className="font-semibold">Cobertura do painel</h2><p className="text-muted-foreground">Estoque, anúncios, social e e-mail têm módulos próprios. Conversão de venda por canal e CNPJ ainda depende de vínculo verificado entre pedido, recebimento, fonte de aquisição e empresa. Não há taxa consolidada confiável disponível nesta tela.</p><div className="flex gap-2 flex-wrap"><Button variant="outline" size="sm" onClick={() => navigate('/supply')}>Estoque</Button><Button variant="outline" size="sm" onClick={() => navigate('/marketing')}>Ads, social e e-mail</Button><Button variant="outline" size="sm" onClick={() => navigate('/financeiro')}>Financeiro</Button></div></div>
+  </div>;
 }

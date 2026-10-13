@@ -13,7 +13,8 @@ interface Props {
 }
 
 export function OrganicVsPaidCard({ summary, isLoading }: Props) {
-  const remainingShare = Math.max(0, 100 - summary.organicShare - summary.paidShare);
+  const hasShares = summary.organicShare !== null && summary.paidShare !== null;
+  const remainingShare = !hasShares ? 0 : Math.max(0, 100 - summary.organicShare - summary.paidShare);
 
   const donutData = [
     { name: "Orgânico", value: summary.organicShare, color: "#10b981" },
@@ -29,6 +30,8 @@ export function OrganicVsPaidCard({ summary, isLoading }: Props) {
       </div>
     );
   }
+
+  if (!hasShares) return <div className="bg-card border rounded-xl p-4 text-xs text-muted-foreground">Distribuição orgânico/pago indisponível: sem sessões para calcular percentuais.</div>;
 
   return (
     <div className="bg-card border rounded-xl p-4">

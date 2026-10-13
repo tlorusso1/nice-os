@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { User, Session } from '@supabase/supabase-js';
+import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
 interface AuthContextType {
@@ -14,36 +15,34 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
+  const currentUserId = useRef<string | null>(null);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        setSession(session);
-        setUser(session?.user ?? null);
-        setLoading(false);
-      }
-    );
-
-    // Fallback: se onAuthStateChange não disparar em 2s, buscar sessão manualmente
-    const fallbackTimeout = setTimeout(() => {
-      if (loading) {
-        supabase.auth.getSession().then(({ data: { session } }) => {
-          setSession(session);
-          setUser(session?.user ?? null);
-          setLoading(false);
-        });
-      }
-    }, 2000);
-
-    return () => {
-      clearTimeout(fallbackTimeout);
-      subscription.unsubscribe();
+    let active = true;
+    let authEventReceived = false;
+    const applySession = (next: Session | null) => {
+      if (!active) return;
+      const nextId = next?.user.id ?? null;
+      if (currentUserId.current !== nextId) queryClient.clear();
+      currentUserId.current = nextId;
+      setSession(next);
+      setUser(next?.user ?? null);
+      setLoading(false);
     };
-  }, []);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, next) => {
+      authEventReceived = true;
+      applySession(next);
+    });
+    // Never let an older session lookup overwrite a newer auth event.
+    supabase.auth.getSession().then(({ data, error }) => {
+      if (!authEventReceived) applySession(error ? null : data.session);
+    }).catch(() => { if (!authEventReceived) applySession(null); });
+    return () => { active = false; subscription.unsubscribe(); };
+  }, [queryClient]);
 
   const signUp = async (email: string, password: string) => {
     const { error } = await supabase.auth.signUp({
@@ -65,7 +64,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    queryClient.clear();
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
   };
 
   return (

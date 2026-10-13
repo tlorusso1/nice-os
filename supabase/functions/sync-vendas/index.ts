@@ -100,7 +100,9 @@ async function tinyGet(endpoint: string, params: Record<string, string>) {
 }
 
 async function blingGet(path: string) {
-  const response = await fetch(`${BLING_PROXY}${path}`, { headers: { apikey: ANON_KEY } });
+  const response = await fetch(`${BLING_PROXY}${path}`, {
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` },
+  });
   const json = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(`Bling ${path}: HTTP ${response.status}`);
   if (json?.error === "BLING_INVALID_TOKEN") throw new Error("Bling token inválido ou refresh OAuth ausente");

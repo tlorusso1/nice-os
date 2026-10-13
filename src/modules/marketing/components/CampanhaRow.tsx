@@ -1,9 +1,8 @@
+import { formatMoney as fmt, formatRate, formatNumber } from "../lib/dataQuality";
 import { cn } from "@/lib/utils";
 import { Play, Pause } from "lucide-react";
 import type { MetaCampaign } from "../hooks/useMarketingData";
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 type AnysCampaign = MetaCampaign & { channel?: "meta" | "google" };
 
@@ -44,16 +43,16 @@ export function CampanhaRow({ campanha }: Props) {
           <p className="text-[10px] text-muted-foreground">ROAS</p>
           <p className={cn(
             "text-xs font-semibold tabular-nums",
-            insights.roas === 0 ? "text-muted-foreground" :
+            insights.roas === null ? "text-muted-foreground" :
             insights.roas >= 3 ? "text-emerald-600 dark:text-emerald-400" :
             insights.roas >= 2 ? "text-amber-600 dark:text-amber-400" : "text-red-500"
           )}>
-            {insights.roas > 0 ? `${insights.roas.toFixed(2)}x` : "—"}
+            {formatRate(insights.roas, "x")}
           </p>
         </div>
         <div>
           <p className="text-[10px] text-muted-foreground">Compras</p>
-          <p className="text-xs font-semibold tabular-nums">{insights.purchases || "—"}</p>
+          <p className="text-xs font-semibold tabular-nums">{formatNumber(insights.purchases)}</p>
         </div>
       </div>
     </div>

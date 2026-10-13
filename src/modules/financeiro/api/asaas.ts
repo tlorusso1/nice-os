@@ -1,3 +1,4 @@
+import { finiteNumber, monthBounds } from "@/lib/dataIntegrity";
 import { apiBase, proxyFetch } from "@/lib/apiBase";
 // Asaas API — Vite proxy em dev, Supabase Edge Function em prod
 const BASE = apiBase("asaas");
@@ -29,7 +30,16 @@ export interface AsaasBill {
 async function get<T>(path: string): Promise<T> {
   const res = await proxyFetch(`${BASE}${path}`);
   if (!res.ok) throw new Error(`Asaas ${path}: ${res.status}`);
-  return res.json();
+  const data = await res.json();
+  if (data?.error || data?.errors) throw new Error("Integração retornou erro");
+  if (path === '/finance/balance') {
+    const balance = finiteNumber(data?.balance);
+    if (balance === null) throw new Error('Saldo Asaas inválido');
+    data.balance = balance;
+  }
+  if (path.startsWith('/payments?') && (!Array.isArray(data?.data) || data.data.some((row: AsaasPayment) => finiteNumber(row.value) === null))) throw new Error('Cobranças Asaas inválidas');
+  if (Array.isArray(data?.data)) data.data = data.data.map((row: AsaasPayment) => ({ ...row, value: finiteNumber(row.value) }));
+  return data;
 }
 
 export async function getAsaasBalance(): Promise<AsaasBalance> {
@@ -42,9 +52,7 @@ export async function getAsaasReceivables(): Promise<{ data: AsaasPayment[]; tot
 }
 
 export async function getAsaasReceivedThisMonth(): Promise<{ data: AsaasPayment[]; totalCount: number }> {
-  const now = new Date();
-  const start = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
-  const end = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-31`;
+  const { start, end } = monthBounds();
   return get(`/payments?limit=100&status=RECEIVED,CONFIRMED&paymentDate[ge]=${start}&paymentDate[le]=${end}`);
 }
 

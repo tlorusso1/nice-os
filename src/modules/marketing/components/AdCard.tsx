@@ -1,14 +1,13 @@
+import { formatMoney as fmt, formatRate, formatNumber } from "../lib/dataQuality";
 import { ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { classificarCampanha, CLASSIFICACAO_CONFIG } from "../hooks/useMarketingData";
 import type { MetaAd } from "../hooks/useMarketingData";
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
 
 export function AdCard({ ad }: { ad: MetaAd }) {
   const pseudo = { ...ad, objective: "", status: ad.status as "ACTIVE" | "PAUSED" | "ARCHIVED", insights: ad.insights };
-  const classificacao = classificarCampanha(pseudo as any);
+  const classificacao = classificarCampanha(pseudo);
   const config = CLASSIFICACAO_CONFIG[classificacao];
   const isActive = ad.status === "ACTIVE";
 
@@ -75,14 +74,14 @@ export function AdCard({ ad }: { ad: MetaAd }) {
             { label: "Gasto", value: fmt(ad.insights.spend) },
             {
               label: "ROAS",
-              value: ad.insights.roas > 0 ? `${ad.insights.roas.toFixed(2)}x` : "—",
+              value: formatRate(ad.insights.roas, "x"),
               className:
                 ad.insights.roas >= 3.5 ? "text-emerald-600 dark:text-emerald-400" :
                 ad.insights.roas >= 2 ? "text-amber-600 dark:text-amber-400" :
                 ad.insights.roas > 0 ? "text-red-500" : "",
             },
-            { label: "CTR", value: `${ad.insights.ctr.toFixed(2)}%` },
-            { label: "Compras", value: String(ad.insights.purchases) },
+            { label: "CTR", value: formatRate(ad.insights.ctr) },
+            { label: "Compras", value: formatNumber(ad.insights.purchases) },
           ].map(({ label, value, className }) => (
             <div key={label} className="bg-muted/40 rounded-lg p-1.5">
               <p className="text-[9px] text-muted-foreground">{label}</p>

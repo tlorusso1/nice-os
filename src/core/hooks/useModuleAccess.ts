@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ModuleId } from "../store/navigation";
@@ -31,44 +31,29 @@ interface ModuleAccessState {
 
 export function useModuleAccess(): ModuleAccessState {
   const { user } = useAuth();
-  const [roles, setRoles] = useState<AppRole[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-
-  useEffect(() => {
-    if (!user) {
-      setRoles([]);
-      setIsLoading(false);
-      return;
-    }
-
-    setIsLoading(true);
-    supabase
-      .from("user_roles")
-      .select("role")
-      .eq("user_id", user.id)
-      .then(({ data, error }) => {
-        if (error || !data) {
-          // Default to admin if no roles found (keeps existing behaviour)
-          setRoles(["admin"]);
-        } else {
-          const fetchedRoles = data.map((r) => r.role as AppRole);
-          setRoles(fetchedRoles.length > 0 ? fetchedRoles : ["admin"]);
-        }
-        setIsLoading(false);
-      });
-  }, [user?.id]);
+  const { data: roles = [], isLoading, isError } = useQuery({
+    queryKey: ['access', 'roles', user?.id],
+    enabled: Boolean(user),
+    queryFn: async (): Promise<AppRole[]> => {
+      const { data, error } = await supabase.from('user_roles').select('role').eq('user_id', user!.id);
+      if (error) throw error;
+      return (data ?? []).map(row => String(row.role)).filter((role): role is AppRole => role in ROLE_MODULES);
+    },
+    retry: 1,
+    staleTime: 60_000,
+  });
 
   // admin always sees everything
-  const isAdmin = roles.includes("admin");
+  const isAdmin = Boolean(user) && !isLoading && !isError && roles.includes("admin");
   const allowedModules: ModuleId[] = isAdmin
     ? ROLE_MODULES.admin
-    : [...new Set(roles.flatMap((r) => ROLE_MODULES[r] ?? []))];
+    : !user || isError || isLoading ? [] : [...new Set(roles.flatMap((r) => ROLE_MODULES[r] ?? []))];
 
-  // Default path = first allowed module's path, falling back to /financeiro
-  const primaryRole: AppRole = roles[0] ?? "admin";
-  const defaultPath = ROLE_DEFAULT_PATH[primaryRole] ?? "/financeiro";
+  // Missing roles grant no access; the route boundary displays an explicit denial.
+  const primaryRole = roles[0];
+  const defaultPath = ROLE_DEFAULT_PATH[primaryRole] ?? "/dashboard";
 
   const canAccess = (mod: ModuleId) => isAdmin || allowedModules.includes(mod);
 
-  return { roles, allowedModules, defaultPath, isLoading, canAccess };
+  return { roles: !user || isError ? [] : roles, allowedModules, defaultPath, isLoading, canAccess };
 }

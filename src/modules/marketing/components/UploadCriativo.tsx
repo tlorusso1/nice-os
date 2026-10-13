@@ -38,8 +38,8 @@ export function UploadCriativo() {
       const res = await upload(file);
       setResult(res);
       setState("success");
-    } catch (err: any) {
-      setErrorMsg(err?.message ?? "Erro ao enviar imagem");
+    } catch (err: unknown) {
+      setErrorMsg(err instanceof Error ? err.message : "Erro ao enviar imagem");
       setState("error");
     }
   }
