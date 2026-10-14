@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1080">
+<title>Carrossel 2 — Nasci no VHS — @lo.russo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,900;1,400&family=Outfit:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --dark:#0A0A0A;--light:#F5F5F0;--orange:#FF6B00;
+  --white:#F8F8F5;--gray:#888888;--m:52px;
+}
+body{background:#111;display:flex;flex-direction:column;align-items:center;gap:24px;padding:48px;font-family:'Outfit',sans-serif}
+.label{color:#666;font-size:13px;font-family:'Outfit',sans-serif;align-self:flex-start;letter-spacing:.08em;text-transform:uppercase}
+
+/* ── SLIDE BASE ── */
+.slide{width:1080px;height:1080px;position:relative;overflow:hidden;flex-shrink:0}
+.dark{background:var(--dark)}
+.light{background:var(--light)}
+
+/* Grain */
+.slide::after{
+  content:'';position:absolute;inset:0;z-index:90;pointer-events:none;
+  opacity:.04;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='256' height='256'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='256' height='256' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* Accent lines */
+.lv{position:absolute;left:0;top:0;bottom:0;width:6px;background:var(--orange);z-index:10}
+
+/* Slide number & handle */
+.num{position:absolute;top:var(--m);left:var(--m);font-size:16px;font-weight:500;color:var(--gray);letter-spacing:.14em;z-index:20;font-family:'Outfit',sans-serif}
+.num.dk{color:#3a3a3a}
+.hdl{position:absolute;bottom:var(--m);left:var(--m);font-size:16px;color:#555;letter-spacing:.06em;z-index:20;font-family:'Outfit',sans-serif}
+.hdl.lt{color:#aaa}
+
+/* =========================================
+   SLIDE 01 — CAPA
+   ========================================= */
+/* Shared explosion art (same as C1 cover) */
+.s01 .explosion{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 80px 60px at 50% 44%,#FFFDE0 0%,#FFAA00 12%,#FF5500 30%,transparent 60%),
+    radial-gradient(ellipse 260px 200px at 50% 44%,rgba(255,110,0,.55) 0%,transparent 58%),
+    radial-gradient(ellipse 540px 420px at 50% 44%,rgba(255,80,0,.22) 0%,transparent 68%),
+    radial-gradient(ellipse 860px 700px at 50% 44%,rgba(255,50,0,.08) 0%,transparent 80%),
+    var(--dark);
+}
+.s01 .spark{position:absolute;background:var(--orange);border-radius:2px}
+.s01 .tvbody{
+  position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);
+  width:260px;height:200px;
+  border:7px solid rgba(255,255,255,.05);border-radius:18px;
+}
+.s01 .overlay{
+  position:absolute;bottom:0;left:0;right:0;height:68%;
+  background:linear-gradient(to top,#0A0A0A 45%,rgba(10,10,10,.88) 72%,transparent);
+  z-index:2;
+}
+.s01 .txt{position:absolute;bottom:68px;left:var(--m);z-index:15}
+.s01 .pretxt{font-family:'Outfit',sans-serif;font-size:22px;color:var(--orange);letter-spacing:.04em;margin-bottom:6px}
+.s01 .t1{font-family:'Playfair Display',serif;font-size:90px;font-weight:700;color:var(--white);line-height:.92;letter-spacing:-.025em}
+.s01 .t2{font-family:'Bebas Neue',sans-serif;font-size:160px;color:var(--orange);line-height:.82;letter-spacing:-.01em}
+
+/* =========================================
+   SLIDE 02 — A FITA
+   ========================================= */
+/* CSS editorial VHS art */
+.s02 .vhs-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 500px 300px at 50% 60%,rgba(255,255,255,.04) 0%,transparent 65%),
+    linear-gradient(180deg,#F5F5F0 0%,#E8E8E3 100%);
+}
+/* VHS cassette silhouette */
+.s02 .cassette{
+  position:absolute;left:50%;top:30%;transform:translate(-50%,-50%);
+  width:420px;height:260px;
+  border:6px solid rgba(10,10,10,.55);border-radius:8px;
+  background:rgba(10,10,10,.06);
+  box-shadow:8px 8px 0 rgba(10,10,10,.08);
+}
+.s02 .cassette::before{
+  content:'';position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:200px;height:80px;border-radius:4px;
+  border:4px solid rgba(10,10,10,.25);background:rgba(10,10,10,.04);
+}
+/* Tape spill lines */
+.s02 .tape{position:absolute;background:rgba(10,10,10,.35);border-radius:1px}
+/* Gradient overlay from top */
+.s02 .grad{
+  position:absolute;inset:0;
+  background:linear-gradient(to bottom,rgba(245,245,240,0) 0%,rgba(245,245,240,.1) 40%,rgba(245,245,240,.7) 72%,#F5F5F0 100%);
+}
+.s02 .txt{position:absolute;bottom:72px;left:var(--m);z-index:15}
+.s02 .main{font-family:'Playfair Display',serif;font-size:96px;font-weight:700;color:#0A0A0A;line-height:.9;letter-spacing:-.025em}
+.s02 .imp{font-family:'Bebas Neue',sans-serif;font-size:180px;color:var(--orange);line-height:.8;letter-spacing:-.01em}
+
+/* =========================================
+   SLIDE 03 — SKATE
+   ========================================= */
+/* CSS skate ramp art */
+.s03 .ramp-bg{
+  position:absolute;inset:0;
+  background:
+    linear-gradient(160deg,rgba(255,255,255,.02) 0%,transparent 50%),
+    #0A0A0A;
+}
+/* Perspective ramp lines */
+.s03 .ramp{position:absolute;left:0;right:0;top:0;bottom:0}
+.s03 .rline{position:absolute;background:rgba(255,255,255,.07);border-radius:1px}
+/* Bottom gradient */
+.s03 .overlay{
+  position:absolute;bottom:0;left:0;right:0;height:55%;
+  background:linear-gradient(to top,#0A0A0A 45%,rgba(10,10,10,.85) 72%,transparent);
+  z-index:2;
+}
+.s03 .txt{position:absolute;bottom:72px;left:var(--m);z-index:15}
+.s03 .main{font-family:'Playfair Display',serif;font-size:96px;font-weight:700;color:var(--white);line-height:.9;letter-spacing:-.025em}
+.s03 .imp{font-family:'Bebas Neue',sans-serif;font-size:180px;color:var(--orange);line-height:.8;letter-spacing:-.01em}
+
+/* =========================================
+   SLIDE 04 — MSN
+   ========================================= */
+/* CSS blue-glowing computer art */
+.s04 .monitor-bg{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(ellipse 400px 350px at 50% 42%,rgba(30,80,200,.22) 0%,rgba(10,40,140,.12) 40%,transparent 70%),
+    radial-gradient(ellipse 700px 600px at 50% 42%,rgba(20,50,180,.08) 0%,transparent 75%),
+    #0A0A0A;
+}
+.s04 .monitor{
+  position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);
+  width:340px;height:260px;
+  border:6px solid rgba(100,160,255,.15);border-radius:10px;
+  background:rgba(30,80,200,.06);
+}
+/* Screen glow */
+.s04 .screen{
+  position:absolute;left:50%;top:35%;transform:translate(-50%,-50%);
+  width:300px;height:220px;
+  background:radial-gradient(ellipse at center,rgba(40,100,255,.18) 0%,transparent 70%);
+  border-radius:6px;
+}
+/* Scan lines on monitor */
+.s04 .scanlines{
+  position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);
+  width:290px;height:210px;
+  background:repeating-linear-gradient(0deg,transparent,transparent 3px,rgba(255,255,255,.015) 3px,rgba(255,255,255,.015) 4px);
+  border-radius:4px;
+}
+.s04 .overlay{
+  position:absolute;bottom:0;left:0;right:0;height:60%;
+  background:linear-gradient(to top,#0A0A0A 45%,rgba(10,10,10,.88) 72%,transparent);
+  z-index:2;
+}
+.s04 .txt{position:absolute;bottom:72px;left:var(--m);z-index:15}
+.s04 .main{font-family:'Playfair Display',serif;font-size:96px;font-weight:700;color:var(--white);line-height:.9;letter-spacing:-.025em}
+.s04 .imp{font-family:'Bebas Neue',sans-serif;font-size:220px;color:var(--orange);line-height:.78;letter-spacing:-.01em}
+
+/* =========================================
+   SLIDE 05 — CADA ERA
+   ========================================= */
+.s05 .cnt{position:absolute;left:var(--m);right:var(--m);top:88px;z-index:10}
+.s05 .mtitle{font-family:'Playfair Display',serif;font-size:68px;font-weight:700;color:var(--white);line-height:.95;letter-spacing:-.022em;margin-bottom:52px}
+.s05 .era-list{display:flex;flex-direction:column;gap:0}
+.s05 .era{
+  display:flex;align-items:baseline;gap:20px;
+  padding:12px 0;border-bottom:1px solid rgba(255,255,255,.07);
+}
+.s05 .era-num{font-family:'Outfit',sans-serif;font-size:15px;color:var(--gray);letter-spacing:.1em;min-width:32px}
+.s05 .era-name{font-family:'Bebas Neue',sans-serif;color:var(--white);letter-spacing:.02em;line-height:1}
+.s05 .era-sub{font-family:'Outfit',sans-serif;font-size:20px;color:var(--gray);letter-spacing:.02em;margin-left:auto}
+.s05 .bottom{
+  position:absolute;bottom:var(--m);left:var(--m);right:var(--m);z-index:10;
+}
+.s05 .final{font-family:'Bebas Neue',sans-serif;font-size:100px;color:var(--orange);line-height:.88;letter-spacing:.02em}
+
+/* =========================================
+   SLIDE 06 — TECNOLOGIA NÃO ESPERA
+   ========================================= */
+.s06 .cnt{position:absolute;left:var(--m);right:var(--m);top:50%;transform:translateY(-50%);z-index:10}
+.s06 .main{font-family:'Playfair Display',serif;font-size:108px;font-weight:700;color:var(--white);line-height:.9;letter-spacing:-.025em}
+.s06 .imp{font-family:'Bebas Neue',sans-serif;font-size:240px;color:var(--orange);line-height:.78;letter-spacing:-.01em;margin-top:8px}
+.s06 .cap{font-family:'Outfit',sans-serif;font-size:27px;color:var(--gray);line-height:1.55;margin-top:28px}
+
+/* =========================================
+   SLIDE 07 — ENCERRAMENTO
+   ========================================= */
+.s07 .portrait{
+  position:absolute;right:0;top:0;bottom:0;width:560px;
+  background:
+    linear-gradient(to left,transparent 0%,rgba(10,10,10,.75) 52%,#0A0A0A 82%),
+    linear-gradient(160deg,rgba(255,107,0,.18) 0%,transparent 55%),
+    radial-gradient(ellipse 350px 500px at 75% 38%,rgba(255,90,0,.14) 0%,transparent 65%),
+    linear-gradient(to br,#1e1510,#0d0d0d);
+  z-index:2;
+}
+.s07 .figure{
+  position:absolute;right:90px;top:80px;width:340px;bottom:80px;
+  background:
+    radial-gradient(ellipse 180px 160px at 50% 18%,rgba(255,110,0,.12) 0%,transparent 55%),
+    linear-gradient(to bottom,rgba(35,25,15,.7) 0%,rgba(12,10,8,.92) 100%);
+  border-radius:4px;z-index:1;
+}
+.s07 .face{
+  position:absolute;right:155px;top:120px;width:120px;height:160px;
+  background:radial-gradient(ellipse at 30% 40%,rgba(255,130,60,.2) 0%,transparent 65%);
+  border-radius:50%;z-index:2;
+}
+.s07 .txt{
+  position:absolute;left:var(--m);top:50%;transform:translateY(-50%);width:460px;z-index:15;
+}
+.s07 .sm-gray{font-family:'Outfit',sans-serif;font-size:22px;color:var(--gray);font-style:italic;line-height:1.4;margin-bottom:18px}
+.s07 .lh{display:block;height:3px;background:var(--orange);margin:18px 0}
+.s07 .mid{font-family:'Playfair Display',serif;font-size:52px;font-weight:700;color:var(--white);line-height:1.04;letter-spacing:-.01em}
+.s07 .vem{font-family:'Bebas Neue',sans-serif;font-size:110px;color:var(--orange);line-height:.85;letter-spacing:.01em;display:block}
+.s07 .hndl-lg{font-family:'Bebas Neue',sans-serif;font-size:80px;color:var(--orange);line-height:.9;letter-spacing:.05em;display:block;margin-top:6px}
+.s07 .tagline{font-family:'Outfit',sans-serif;font-size:17px;color:var(--gray);letter-spacing:.09em;margin-top:14px;text-transform:lowercase}
+</style>
+</head>
+<body>
+
+<!-- ══════════════════════════════════
+     SLIDE 01 — CAPA
+     ══════════════════════════════════ -->
+<div class="label">01 / 07 — CAPA</div>
+<div class="slide dark s01">
+  <div class="lv"></div>
+  <div class="explosion"></div>
+  <div class="tvbody"></div>
+
+  <div class="spark" style="left:42%;top:24%;width:90px;height:3px;transform:rotate(-38deg);opacity:.88"></div>
+  <div class="spark" style="left:55%;top:22%;width:65px;height:2px;transform:rotate(18deg);opacity:.8"></div>
+  <div class="spark" style="left:33%;top:30%;width:110px;height:3px;transform:rotate(-58deg);opacity:.82"></div>
+  <div class="spark" style="left:59%;top:34%;width:75px;height:2px;transform:rotate(48deg);opacity:.72"></div>
+  <div class="spark" style="left:38%;top:57%;width:55px;height:2px;transform:rotate(68deg);opacity:.65"></div>
+  <div class="spark" style="left:63%;top:54%;width:95px;height:3px;transform:rotate(-22deg);opacity:.78"></div>
+  <div class="spark" style="left:66%;top:40%;width:80px;height:2px;transform:rotate(28deg);opacity:.74"></div>
+
+  <div class="overlay"></div>
+  <div class="num">01 — 07</div>
+  <div class="hdl lt">@lo.russo</div>
+
+  <div class="txt">
+    <div class="pretxt">88. e tudo que veio depois.</div>
+    <div class="t1">NASCI NO VHS.</div>
+    <div class="t1" style="font-size:80px">ESTOU NO</div>
+    <div class="t2">FUTURO.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 02 — A FITA
+     ══════════════════════════════════ -->
+<div class="label">02 / 07 — A FITA</div>
+<div class="slide light s02">
+  <div class="lv"></div>
+  <div class="vhs-bg"></div>
+  <div class="cassette"></div>
+
+  <!-- Tape spill lines -->
+  <div class="tape" style="left:30%;top:54%;width:3px;height:160px;transform:rotate(12deg)"></div>
+  <div class="tape" style="left:36%;top:58%;width:2px;height:120px;transform:rotate(-8deg)"></div>
+  <div class="tape" style="left:44%;top:56%;width:3px;height:180px;transform:rotate(22deg)"></div>
+  <div class="tape" style="left:52%;top:60%;width:2px;height:100px;transform:rotate(-15deg)"></div>
+  <div class="tape" style="left:58%;top:55%;width:3px;height:150px;transform:rotate(6deg)"></div>
+  <div class="tape" style="left:64%;top:59%;width:2px;height:130px;transform:rotate(-28deg)"></div>
+  <div class="tape" style="left:28%;top:72%;width:120px;height:2px;transform:rotate(5deg)"></div>
+  <div class="tape" style="left:44%;top:76%;width:180px;height:2px;transform:rotate(-3deg)"></div>
+  <div class="tape" style="left:38%;top:82%;width:260px;height:2px;transform:rotate(2deg)"></div>
+
+  <div class="grad"></div>
+  <div class="num dk">02 — 07</div>
+  <div class="hdl lt">@lo.russo</div>
+
+  <div class="txt">
+    <div class="main">O MUNDO<br>TINHA FITA.<br>EU TINHA</div>
+    <div class="imp">TEMPO.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 03 — SKATE
+     ══════════════════════════════════ -->
+<div class="label">03 / 07 — SKATE</div>
+<div class="slide dark s03">
+  <div class="lv"></div>
+  <div class="ramp-bg"></div>
+
+  <!-- Perspective ramp grid lines -->
+  <div class="ramp">
+    <!-- Horizontal lines (converge to center) -->
+    <div class="rline" style="left:0;right:0;top:38%;height:1px;transform:perspective(600px) rotateX(60deg);opacity:.12"></div>
+    <!-- Converging vertical lines -->
+    <div class="rline" style="left:20%;top:0;width:1px;height:55%;transform:skewX(-20deg);opacity:.08"></div>
+    <div class="rline" style="left:35%;top:0;width:1px;height:55%;transform:skewX(-8deg);opacity:.06"></div>
+    <div class="rline" style="left:50%;top:0;width:1px;height:55%;opacity:.06"></div>
+    <div class="rline" style="left:65%;top:0;width:1px;height:55%;transform:skewX(8deg);opacity:.06"></div>
+    <div class="rline" style="left:80%;top:0;width:1px;height:55%;transform:skewX(20deg);opacity:.08"></div>
+    <!-- Curved ramp suggestion -->
+    <div style="position:absolute;left:50%;top:45%;transform:translate(-50%,-50%);width:700px;height:350px;border-bottom:3px solid rgba(255,255,255,.06);border-radius:0 0 50% 50%"></div>
+  </div>
+
+  <div class="overlay"></div>
+  <div class="num">03 — 07</div>
+  <div class="hdl">@lo.russo</div>
+
+  <div class="txt">
+    <div class="main">APRENDI A<br>ANDAR DE SKATE<br>ANTES DE TER</div>
+    <div class="imp">INTERNET.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 04 — MSN
+     ══════════════════════════════════ -->
+<div class="label">04 / 07 — MSN</div>
+<div class="slide dark s04">
+  <div class="lv"></div>
+  <div class="monitor-bg"></div>
+  <div class="monitor"></div>
+  <div class="screen"></div>
+  <div class="scanlines"></div>
+  <div class="overlay"></div>
+  <div class="num">04 — 07</div>
+  <div class="hdl">@lo.russo</div>
+
+  <div class="txt">
+    <div class="main">O MSN DESLIGAVA.<br>EU FICAVA</div>
+    <div class="imp">ONLINE.</div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 05 — CADA ERA
+     ══════════════════════════════════ -->
+<div class="label">05 / 07 — CADA ERA</div>
+<div class="slide dark s05">
+  <div class="lv"></div>
+  <div class="num">05 — 07</div>
+  <div class="hdl">@lo.russo</div>
+
+  <div class="cnt">
+    <div class="mtitle">CADA ERA ME<br>ENSINOU DO ZERO.</div>
+    <div class="era-list">
+      <div class="era">
+        <span class="era-num">01</span>
+        <span class="era-name" style="font-size:56px;color:#555">VHS</span>
+        <span class="era-sub">paciência</span>
+      </div>
+      <div class="era">
+        <span class="era-num">02</span>
+        <span class="era-name" style="font-size:68px;color:#777">INTERNET DISCADA</span>
+        <span class="era-sub">adaptação</span>
+      </div>
+      <div class="era">
+        <span class="era-num">03</span>
+        <span class="era-name" style="font-size:82px;color:#999">REDES SOCIAIS</span>
+        <span class="era-sub">velocidade</span>
+      </div>
+      <div class="era">
+        <span class="era-num">04</span>
+        <span class="era-name" style="font-size:96px;color:#ccc">SMARTPHONES</span>
+        <span class="era-sub">onipresença</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="bottom">
+    <div class="final" style="display:flex;align-items:baseline;gap:16px">
+      <span style="font-size:60px;color:var(--gray);font-family:'Outfit',sans-serif;font-weight:700">05 →</span>
+      <span>IA</span>
+      <span style="font-size:40px;color:var(--gray);font-family:'Outfit',sans-serif">já aprendi.</span>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 06 — TECNOLOGIA NÃO ESPERA
+     ══════════════════════════════════ -->
+<div class="label">06 / 07 — TECNOLOGIA NÃO ESPERA</div>
+<div class="slide dark s06">
+  <div class="lv"></div>
+  <div class="num">06 — 07</div>
+  <div class="hdl">@lo.russo</div>
+  <div class="cnt">
+    <div class="main">TECNOLOGIA<br>NÃO ESPERA<br>VOCÊ ESTAR</div>
+    <div class="imp">PRONTO.</div>
+    <div class="cap">
+      Nunca esperou.<br>
+      Nunca vai esperar.<br>
+      Só você pode decidir correr.
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════
+     SLIDE 07 — ENCERRAMENTO
+     ══════════════════════════════════ -->
+<div class="label">07 / 07 — ENCERRAMENTO</div>
+<div class="slide dark s07">
+  <div class="lv"></div>
+  <div class="portrait"></div>
+  <div class="figure"></div>
+  <div class="face"></div>
+  <div class="num">07 — 07</div>
+  <div class="hdl">@lo.russo</div>
+  <div class="txt">
+    <div class="sm-gray">do VHS ao que vem depois da IA.</div>
+    <span class="lh"></span>
+    <div class="mid">MARCA. NEGÓCIOS.<br>O QUE</div>
+    <span class="vem">VEM AÍ.</span>
+    <span class="lh"></span>
+    <span class="hndl-lg">@LO.RUSSO</span>
+    <div class="tagline">marca · negócios · o que vem aí</div>
+  </div>
+</div>
+
+<div style="color:#444;font-size:13px;margin-top:24px;max-width:1080px;line-height:1.6">
+  ⚠ Para exportar: abra no Chrome, zoom 100%, screenshot de cada slide individualmente.<br>
+  Substitua o CSS art dos slides 01, 02, 03, 04 e 07 pelas fotos reais quando disponíveis.
+</div>
+
+</body>
+</html>
